@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { WorkspaceProvider, useWorkspace } from './context/WorkspaceContext';
+import { ToastProvider } from './context/ToastContext';
 import { AuthView } from './components/auth/AuthView';
 import { Navbar } from './components/layout/Navbar';
 import { Sidebar } from './components/layout/Sidebar';
@@ -113,9 +114,12 @@ function MainAppLayout() {
 export default function App() {
   return (
     <AuthProvider>
-      <WorkspaceProvider>
-        <MainAppLayout />
-      </WorkspaceProvider>
+      <ToastProvider>
+        <WorkspaceProvider>
+          <MainAppLayout />
+        </WorkspaceProvider>
+      </ToastProvider>
     </AuthProvider>
   );
 }
+

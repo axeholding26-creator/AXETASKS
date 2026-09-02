@@ -1,12 +1,14 @@
 import React, { useState, useEffect } from 'react';
 import { useWorkspace } from '../../context/WorkspaceContext';
 import { useAuth } from '../../context/AuthContext';
+import { useToast } from '../../context/ToastContext';
 import { api } from '../../lib/api';
 import { Project, User, Tag, TaskPriority, TaskStatus } from '../../types';
 import { X, Plus, Calendar, Tag as TagIcon, Check } from 'lucide-react';
 
 export const CreateTaskModal: React.FC = () => {
   const { user } = useAuth();
+  const { notify } = useToast();
   const { 
     isCreateTaskModalOpen, 
     setIsCreateTaskModalOpen, 
@@ -86,6 +88,11 @@ export const CreateTaskModal: React.FC = () => {
 
       setIsCreateTaskModalOpen(false);
       setSelectedTaskId(newTask.id);
+      notify({
+        type: 'success',
+        title: 'Tâche créée avec succès',
+        message: `« ${newTask.title} » a été ajoutée au projet.`,
+      });
     } catch (err: any) {
       setError(err.message || 'Erreur lors de la création de la tâche.');
     } finally {

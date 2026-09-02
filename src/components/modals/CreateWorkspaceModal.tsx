@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { useWorkspace } from '../../context/WorkspaceContext';
+import { useToast } from '../../context/ToastContext';
 import { api } from '../../lib/api';
 import { Layers, X, Plus } from 'lucide-react';
 
@@ -8,6 +9,7 @@ const PRESET_COLORS = [
 ];
 
 export const CreateWorkspaceModal: React.FC = () => {
+  const { notify } = useToast();
   const { 
     isCreateWorkspaceModalOpen, 
     setIsCreateWorkspaceModalOpen,
@@ -40,6 +42,11 @@ export const CreateWorkspaceModal: React.FC = () => {
       await refreshWorkspaces();
       setCurrentWorkspaceId(newWs.id);
       setIsCreateWorkspaceModalOpen(false);
+      notify({
+        type: 'success',
+        title: 'Espace de travail créé',
+        message: `L'espace « ${newWs.name} » est opérationnel.`,
+      });
       setName('');
       setColor('#F59E0B');
     } catch (err: any) {

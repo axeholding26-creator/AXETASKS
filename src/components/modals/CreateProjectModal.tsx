@@ -1,9 +1,11 @@
 import React, { useState } from 'react';
 import { useWorkspace } from '../../context/WorkspaceContext';
+import { useToast } from '../../context/ToastContext';
 import { api } from '../../lib/api';
 import { FolderGit2, X, Plus } from 'lucide-react';
 
 export const CreateProjectModal: React.FC = () => {
+  const { notify } = useToast();
   const { 
     isCreateProjectModalOpen, 
     setIsCreateProjectModalOpen, 
@@ -37,6 +39,11 @@ export const CreateProjectModal: React.FC = () => {
 
       setIsCreateProjectModalOpen(false);
       setCurrentProjectId(newProject.id);
+      notify({
+        type: 'success',
+        title: 'Projet créé',
+        message: `Le projet « ${newProject.name} » a été initialisé.`,
+      });
       setName('');
       setDescription('');
       setDeadline('');

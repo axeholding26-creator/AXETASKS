@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { useWorkspace } from '../../context/WorkspaceContext';
+import { useToast } from '../../context/ToastContext';
+import { SoundEffectType } from '../../lib/sound';
 import { api } from '../../lib/api';
 import { WorkspaceMember, Tag, WorkspaceRole, User as UserType } from '../../types';
 import { Avatar } from '../common/Avatar';
@@ -20,7 +22,15 @@ import {
   Search,
   KeyRound,
   ShieldCheck,
-  UserX
+  UserX,
+  Volume2,
+  VolumeX,
+  Sparkles,
+  Music,
+  Radio,
+  Play,
+  Sliders,
+  BellRing
 } from 'lucide-react';
 
 const PRESET_COLORS = [
@@ -30,13 +40,23 @@ const PRESET_COLORS = [
 export const SettingsView: React.FC = () => {
   const { user } = useAuth();
   const { currentWorkspace, refreshWorkspaces } = useWorkspace();
+  const { 
+    notify, 
+    soundEnabled, 
+    soundVolume, 
+    toggleSound, 
+    updateVolume, 
+    playTestSound 
+  } = useToast();
 
   const isGlobalAdmin = user?.role === 'admin';
   const isWorkspaceAdmin = isGlobalAdmin || currentWorkspace?.my_role === 'admin';
 
-  const [activeTab, setActiveTab] = useState<'members' | 'tags' | 'workspace' | 'all_users'>(
+  const [activeTab, setActiveTab] = useState<'members' | 'tags' | 'workspace' | 'all_users' | 'notifications'>(
     isGlobalAdmin ? 'all_users' : 'members'
   );
+
+  const [lastPlayedSound, setLastPlayedSound] = useState<string>('');
 
   // Members state
   const [members, setMembers] = useState<WorkspaceMember[]>([]);
@@ -324,6 +344,18 @@ export const SettingsView: React.FC = () => {
             <span>Détails de l'Espace</span>
           </button>
         )}
+
+        <button
+          onClick={() => setActiveTab('notifications')}
+          className={`flex items-center gap-2 px-3 py-1.5 rounded text-xs font-bold transition-colors whitespace-nowrap ${
+            activeTab === 'notifications'
+              ? 'bg-[#2563EB]/20 text-[#60A5FA] border border-[#2563EB]/40'
+              : 'text-slate-400 hover:text-slate-200'
+          }`}
+        >
+          <BellRing className="w-3.5 h-3.5 text-[#3B82F6]" />
+          <span>Sons & Alertes</span>
+        </button>
       </div>
 
       {/* TAB: GLOBAL USERS ADMINISTRATION (ADMIN ONLY) */}
@@ -753,6 +785,221 @@ export const SettingsView: React.FC = () => {
             </div>
           </div>
         </form>
+      )}
+
+      {/* TAB: SONS & ALERTES (AUDIO ENGINE & NOTIFICATIONS) */}
+      {activeTab === 'notifications' && (
+        <div className="space-y-5 animate-in fade-in duration-200">
+          {/* Main Controls Card */}
+          <div className="p-5 rounded-xl bg-[#0F172A] border border-[#1E293B] space-y-5 shadow-xl">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-[#1E293B]">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-[#2563EB]/15 border border-[#2563EB]/30 flex items-center justify-center text-[#60A5FA] shadow-lg shadow-blue-500/10">
+                  <Volume2 className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-bold text-slate-100 uppercase tracking-wider flex items-center gap-2">
+                    <span>Moteur Audio & Sons de Notification</span>
+                    <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-emerald-500/10 border border-emerald-500/30 text-emerald-400">
+                      Web Audio API Actif
+                    </span>
+                  </h3>
+                  <p className="text-xs text-slate-400 mt-0.5">
+                    Générateur procédural d'effets acoustiques aléatoires à chaque notification et interaction.
+                  </p>
+                </div>
+              </div>
+
+              {/* Master Toggle */}
+              <div className="flex items-center gap-3 bg-[#090D16] p-1.5 rounded-lg border border-[#1E293B] shrink-0">
+                <button
+                  type="button"
+                  onClick={() => toggleSound(!soundEnabled)}
+                  className={`flex items-center gap-2 px-3 py-1.5 rounded-md text-xs font-bold transition-all ${
+                    soundEnabled
+                      ? 'bg-[#2563EB] text-white shadow-md shadow-blue-500/25'
+                      : 'bg-[#1E293B] text-slate-400 hover:text-slate-200'
+                  }`}
+                >
+                  {soundEnabled ? <Volume2 className="w-3.5 h-3.5" /> : <VolumeX className="w-3.5 h-3.5" />}
+                  <span>{soundEnabled ? 'Sons Activés' : 'Sons Désactivés'}</span>
+                </button>
+              </div>
+            </div>
+
+            {/* Volume Slider & Random Tester */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-1">
+              {/* Volume Slider */}
+              <div className="p-4 rounded-lg bg-[#090D16] border border-[#1E293B] space-y-3">
+                <div className="flex items-center justify-between text-xs">
+                  <span className="font-bold text-slate-300 uppercase tracking-wider flex items-center gap-1.5">
+                    <Sliders className="w-3.5 h-3.5 text-[#3B82F6]" />
+                    Volume Principal
+                  </span>
+                  <span className="font-mono font-bold text-[#60A5FA]">
+                    {Math.round(soundVolume * 100)}%
+                  </span>
+                </div>
+                <input
+                  type="range"
+                  min="0"
+                  max="1"
+                  step="0.05"
+                  value={soundVolume}
+                  disabled={!soundEnabled}
+                  onChange={(e) => updateVolume(parseFloat(e.target.value))}
+                  className="w-full h-2 bg-[#1E293B] rounded-lg appearance-none cursor-pointer accent-[#2563EB]"
+                />
+                <p className="text-[11px] text-slate-500">
+                  Ajuste le niveau de sortie pour l'ensemble des synthétiseurs et carillons de l'application.
+                </p>
+              </div>
+
+              {/* Random Sound Tester Button */}
+              <div className="p-4 rounded-lg bg-gradient-to-br from-[#090D16] to-[#0E1726] border border-[#2563EB]/30 flex flex-col justify-between space-y-3">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-bold text-slate-200 uppercase tracking-wider flex items-center gap-1.5">
+                    <Sparkles className="w-3.5 h-3.5 text-[#60A5FA]" />
+                    Générateur Aléatoire
+                  </span>
+                  {lastPlayedSound && (
+                    <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-[#2563EB]/20 border border-[#2563EB]/40 text-[#93C5FD]">
+                      Dernier: {lastPlayedSound.replace('_', ' ')}
+                    </span>
+                  )}
+                </div>
+                <p className="text-[11px] text-slate-400">
+                  Tire au sort l'une des 5 signatures acoustiques harmoniques et déclenche un toast de test.
+                </p>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const played = playTestSound();
+                    setLastPlayedSound(played);
+                    notify({
+                      type: 'sound_preview',
+                      title: 'Son Aléatoire Joué',
+                      message: `Acoustique: ${played.replace('_', ' ')}`,
+                      sound: false // already played by playTestSound
+                    });
+                  }}
+                  className="w-full py-2 px-4 rounded-lg bg-[#2563EB] hover:bg-[#1D4ED8] active:scale-[0.98] text-white font-bold text-xs shadow-lg shadow-blue-500/20 transition-all flex items-center justify-center gap-2"
+                >
+                  <Play className="w-3.5 h-3.5 fill-current" />
+                  <span>Tester un Son Aléatoire</span>
+                </button>
+              </div>
+            </div>
+
+            {/* Individual Sound Presets Laboratory */}
+            <div className="space-y-3 pt-2">
+              <h4 className="text-xs font-bold text-slate-300 uppercase tracking-wider flex items-center gap-2">
+                <Music className="w-3.5 h-3.5 text-[#3B82F6]" />
+                <span>Les 5 Signatures Acoustiques Aléatoires</span>
+              </h4>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                {[
+                  {
+                    id: 'crystal_bell' as SoundEffectType,
+                    name: 'Crystal Bell',
+                    desc: 'Carillon cristallin C6 / E6 / C7 avec décroissance exponentielle.',
+                    color: 'border-cyan-500/30 bg-cyan-500/5 hover:border-cyan-500/60',
+                    tag: 'C6-E6-C7 Sine'
+                  },
+                  {
+                    id: 'marimba_pop' as SoundEffectType,
+                    name: 'Marimba Pop',
+                    desc: 'Percussion boisée ronde avec glissando de résonance.',
+                    color: 'border-amber-500/30 bg-amber-500/5 hover:border-amber-500/60',
+                    tag: 'Warm Triangle'
+                  },
+                  {
+                    id: 'digital_ping' as SoundEffectType,
+                    name: 'Digital Ping',
+                    desc: 'Double impulsion moderne ultra-claire F6 / A6.',
+                    color: 'border-blue-500/30 bg-blue-500/5 hover:border-blue-500/60',
+                    tag: 'Acoustic Dual'
+                  },
+                  {
+                    id: 'harmonic_success' as SoundEffectType,
+                    name: 'Harmonic Success',
+                    desc: 'Accord d\'élévation tri-phonique E5 / G#5 / B5.',
+                    color: 'border-emerald-500/30 bg-emerald-500/5 hover:border-emerald-500/60',
+                    tag: 'Major Triad'
+                  },
+                  {
+                    id: 'harp_chime' as SoundEffectType,
+                    name: 'Harp Chime',
+                    desc: 'Arpège pincé acoustique D5 / A5 / D6.',
+                    color: 'border-purple-500/30 bg-purple-500/5 hover:border-purple-500/60',
+                    tag: 'Plucked Strings'
+                  },
+                  {
+                    id: 'subtle_tap' as SoundEffectType,
+                    name: 'Subtle Tap',
+                    desc: 'Micro-clic de confirmation minimaliste pour les actions rapides.',
+                    color: 'border-slate-500/30 bg-slate-500/5 hover:border-slate-400/60',
+                    tag: 'Fast Transient'
+                  }
+                ].map((item) => (
+                  <button
+                    key={item.id}
+                    type="button"
+                    onClick={() => {
+                      playTestSound(item.id);
+                      setLastPlayedSound(item.id);
+                      notify({
+                        type: 'info',
+                        title: `Son: ${item.name}`,
+                        message: item.desc,
+                        sound: false
+                      });
+                    }}
+                    className={`p-3.5 rounded-xl border ${item.color} text-left transition-all duration-200 group flex flex-col justify-between space-y-2`}
+                  >
+                    <div className="flex items-center justify-between">
+                      <span className="font-bold text-xs text-slate-200 group-hover:text-white flex items-center gap-1.5">
+                        <Play className="w-3 h-3 text-[#3B82F6] fill-current group-hover:scale-110 transition-transform" />
+                        {item.name}
+                      </span>
+                      <span className="text-[9px] font-mono px-1.5 py-0.5 rounded bg-black/40 text-slate-400 border border-white/5">
+                        {item.tag}
+                      </span>
+                    </div>
+                    <p className="text-[11px] text-slate-400 leading-relaxed">
+                      {item.desc}
+                    </p>
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Documentation & Architecture Details Box */}
+            <div className="p-4 rounded-xl bg-[#090D16] border border-[#1E293B] space-y-3">
+              <div className="flex items-center gap-2">
+                <Radio className="w-4 h-4 text-[#3B82F6]" />
+                <h4 className="text-xs font-bold text-slate-200 uppercase tracking-wider">
+                  Architecture & Déclencheurs Intégrés
+                </h4>
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-[11px] text-slate-400 leading-relaxed">
+                <div className="space-y-1 bg-[#0F172A] p-3 rounded-lg border border-[#1E293B]">
+                  <strong className="text-slate-200 block font-mono">1. Zéro latence procédurale</strong>
+                  <p>
+                    Les sons sont synthétisés en temps réel via l'API Web Audio (<code className="text-[#60A5FA]">OscillatorNode</code> + <code className="text-[#60A5FA]">GainNode</code> exponentiels), garantissant un déclenchement instantané sans téléchargement de fichier MP3.
+                  </p>
+                </div>
+                <div className="space-y-1 bg-[#0F172A] p-3 rounded-lg border border-[#1E293B]">
+                  <strong className="text-slate-200 block font-mono">2. Événements connectés</strong>
+                  <p>
+                    Création de tâches, validation Kanban, minuterie de suivi du temps, ajout de workspaces et commentaires jouent automatiquement une nuance sonore aléatoire.
+                  </p>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
       )}
 
       {/* CONFIRM DELETE USER MODAL */}
