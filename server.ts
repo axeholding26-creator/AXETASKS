@@ -1,8 +1,10 @@
+import 'dotenv/config';
 import express, { Request, Response, NextFunction } from 'express';
 import path from 'path';
 import crypto from 'crypto';
 import { createServer as createViteServer } from 'vite';
 import * as db from './src/db/queries.ts';
+import { db as localDb } from './server/db.ts';
 import { User, TaskStatus, TaskPriority } from './src/types.ts';
 
 // Simple signed token mechanism for auth without external dependency issues
@@ -791,6 +793,16 @@ async function startServer() {
     app.get('*', (req, res) => {
       res.sendFile(path.join(distPath, 'index.html'));
     });
+  }
+
+  // Ensure required administrative and member user accounts exist
+  try {
+    if (typeof (db as any).ensureRequiredUsers === 'function') {
+      await (db as any).ensureRequiredUsers();
+    }
+    console.log('[AxeTask Boot] Required users verified in PostgreSQL database.');
+  } catch (e) {
+    console.warn('[Server Boot] Could not run ensureRequiredUsers:', e);
   }
 
   app.listen(PORT, '0.0.0.0', () => {

@@ -12,11 +12,11 @@ export const BrandLogo: React.FC<BrandLogoProps> = ({
   withText = false 
 }) => {
   const sizeMap = {
-    xs: { icon: 'w-7 h-7', text: 'text-sm' },
-    sm: { icon: 'w-9 h-9', text: 'text-base' },
-    md: { icon: 'w-12 h-12', text: 'text-xl' },
-    lg: { icon: 'w-16 h-16', text: 'text-2xl' },
-    xl: { icon: 'w-24 h-24', text: 'text-4xl' },
+    xs: { icon: 'w-10 h-10', text: 'text-base' },
+    sm: { icon: 'w-14 h-14', text: 'text-lg' },
+    md: { icon: 'w-16 h-16', text: 'text-2xl' },
+    lg: { icon: 'w-24 h-24', text: 'text-3xl' },
+    xl: { icon: 'w-32 h-32', text: 'text-5xl' },
   };
 
   const { icon, text } = sizeMap[size];

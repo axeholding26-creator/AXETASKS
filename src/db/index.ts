@@ -1,3 +1,4 @@
+import 'dotenv/config';
 import { drizzle } from 'drizzle-orm/node-postgres';
 import { Pool } from 'pg';
 import * as schema from './schema.ts';
@@ -9,16 +10,16 @@ declare global {
 export const createPool = () => {
   if (!global._postgresPool) {
     global._postgresPool = new Pool({
-      host: process.env.SQL_HOST,
-      user: process.env.SQL_USER,
-      password: process.env.SQL_PASSWORD,
-      database: process.env.SQL_DB_NAME,
+      host: process.env.SQL_HOST || '127.0.0.1',
+      user: process.env.SQL_USER || 'postgres',
+      password: process.env.SQL_PASSWORD || 'postgres',
+      database: process.env.SQL_DB_NAME || 'axetask',
       max: 10,
-      connectionTimeoutMillis: 15000,
+      connectionTimeoutMillis: 2000,
     });
 
-    global._postgresPool.on('error', (err) => {
-      console.error('Unexpected error on idle SQL pool client:', err);
+    global._postgresPool.on('error', () => {
+      // Ignore background pool connection errors when using local fallback
     });
   }
   return global._postgresPool;

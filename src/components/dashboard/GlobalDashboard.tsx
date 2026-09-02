@@ -117,7 +117,7 @@ export const GlobalDashboard: React.FC = () => {
           className="flex items-center justify-center gap-2 px-3.5 py-1.5 rounded bg-[#2563EB] hover:bg-[#1D4ED8] text-white font-bold text-xs shadow-sm shadow-blue-500/25 active:scale-95 transition-all self-start sm:self-auto"
         >
           <Plus className="w-3.5 h-3.5 stroke-[2.5]" />
-          <span>+ Nouvelle tâche</span>
+          <span>Nouvelle tâche</span>
         </button>
       </div>
 

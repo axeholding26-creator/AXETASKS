@@ -92,7 +92,36 @@ class RelationalDatabase {
     const now = new Date().toISOString();
     const adminHash = hashPassword('password123');
 
-    // Users
+    const uAxeDigital: DBUser = {
+      id: 'usr_axedigital',
+      email: 'axedigital00@gmail.com',
+      name: 'Axe Digital Admin',
+      password_hash: hashPassword('AxeTask2026!Admin1'),
+      role: 'admin',
+      avatar_url: 'https://api.dicebear.com/7.x/initials/svg?seed=Axe%20Digital&backgroundColor=2563EB',
+      created_at: now,
+    };
+
+    const uKameni: DBUser = {
+      id: 'usr_kameni',
+      email: 'kamenimax10@gmail.com',
+      name: 'Max Kameni',
+      password_hash: hashPassword('Kameni2026!Admin2'),
+      role: 'admin',
+      avatar_url: 'https://api.dicebear.com/7.x/initials/svg?seed=Max%20Kameni&backgroundColor=2563EB',
+      created_at: now,
+    };
+
+    const uMembre: DBUser = {
+      id: 'usr_membre',
+      email: 'membre@axetask.com',
+      name: 'Membre AxeTask',
+      password_hash: hashPassword('Member2026!Axe'),
+      role: 'member',
+      avatar_url: 'https://api.dicebear.com/7.x/initials/svg?seed=Membre%20AxeTask&backgroundColor=2563EB',
+      created_at: now,
+    };
+
     const uAdmin: DBUser = {
       id: 'usr_admin',
       email: 'admin@axetask.com',
@@ -133,7 +162,7 @@ class RelationalDatabase {
       created_at: now,
     };
 
-    const users = [uAdmin, uAlex, uSophie, uMarc];
+    const users = [uAxeDigital, uKameni, uMembre, uAdmin, uAlex, uSophie, uMarc];
 
     // Workspaces (ventures)
     const ws1: Workspace = {
@@ -164,6 +193,19 @@ class RelationalDatabase {
 
     // Workspace Members (relations)
     const workspace_members: WorkspaceMember[] = [
+      // Axe Digital Admin & Max Kameni & Membre memberships across workspaces
+      { id: 'wm_ad_1', workspace_id: 'ws_saas', user_id: 'usr_axedigital', role: 'admin', joined_at: now },
+      { id: 'wm_ad_2', workspace_id: 'ws_agency', user_id: 'usr_axedigital', role: 'admin', joined_at: now },
+      { id: 'wm_ad_3', workspace_id: 'ws_ecom', user_id: 'usr_axedigital', role: 'admin', joined_at: now },
+
+      { id: 'wm_km_1', workspace_id: 'ws_saas', user_id: 'usr_kameni', role: 'admin', joined_at: now },
+      { id: 'wm_km_2', workspace_id: 'ws_agency', user_id: 'usr_kameni', role: 'admin', joined_at: now },
+      { id: 'wm_km_3', workspace_id: 'ws_ecom', user_id: 'usr_kameni', role: 'admin', joined_at: now },
+
+      { id: 'wm_mb_1', workspace_id: 'ws_saas', user_id: 'usr_membre', role: 'member', joined_at: now },
+      { id: 'wm_mb_2', workspace_id: 'ws_agency', user_id: 'usr_membre', role: 'member', joined_at: now },
+      { id: 'wm_mb_3', workspace_id: 'ws_ecom', user_id: 'usr_membre', role: 'member', joined_at: now },
+
       // SaaS Studio members: Admin (admin), Alex (member), Sophie (member)
       { id: 'wm_1', workspace_id: 'ws_saas', user_id: 'usr_admin', role: 'admin', joined_at: now },
       { id: 'wm_2', workspace_id: 'ws_saas', user_id: 'usr_alex', role: 'member', joined_at: now },
@@ -481,6 +523,40 @@ class RelationalDatabase {
   }
 
   // --- Users & Auth ---
+  public ensureRequiredUsers(): void {
+    const requiredUsers = [
+      { email: 'axedigital00@gmail.com', name: 'Axe Digital Admin', password: 'AxeTask2026!Admin1', role: 'admin' as const },
+      { email: 'kamenimax10@gmail.com', name: 'Max Kameni', password: 'Kameni2026!Admin2', role: 'admin' as const },
+      { email: 'membre@axetask.com', name: 'Membre AxeTask', password: 'Member2026!Axe', role: 'member' as const },
+    ];
+
+    let modified = false;
+    for (const reqUser of requiredUsers) {
+      const existing = this.data.users.find(u => u.email.toLowerCase() === reqUser.email.toLowerCase());
+      if (!existing) {
+        const newUser: DBUser = {
+          id: generateId('usr'),
+          email: reqUser.email.toLowerCase(),
+          name: reqUser.name,
+          password_hash: hashPassword(reqUser.password),
+          role: reqUser.role,
+          avatar_url: `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(reqUser.name)}&backgroundColor=0B0D11,1E293B`,
+          created_at: new Date().toISOString(),
+        };
+        this.data.users.push(newUser);
+        modified = true;
+      } else {
+        existing.password_hash = hashPassword(reqUser.password);
+        existing.role = reqUser.role;
+        existing.name = reqUser.name;
+        modified = true;
+      }
+    }
+    if (modified) {
+      this.saveData();
+    }
+  }
+
   public getUserByEmail(email: string): DBUser | undefined {
     return this.data.users.find(u => u.email.toLowerCase() === email.toLowerCase());
   }

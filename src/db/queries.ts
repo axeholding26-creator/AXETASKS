@@ -1232,3 +1232,55 @@ export async function getTimeEntries(
     throw new Error('Database query failed. Please try again later.', { cause: error });
   }
 }
+
+export async function ensureRequiredUsers(): Promise<void> {
+  const requiredUsers = [
+    {
+      email: 'axedigital00@gmail.com',
+      name: 'Axe Digital Admin',
+      password: 'AxeTask2026!Admin1',
+      role: 'admin' as const,
+    },
+    {
+      email: 'kamenimax10@gmail.com',
+      name: 'Max Kameni',
+      password: 'Kameni2026!Admin2',
+      role: 'admin' as const,
+    },
+    {
+      email: 'membre@axetask.com',
+      name: 'Membre AxeTask',
+      password: 'Member2026!Axe',
+      role: 'member' as const,
+    },
+  ];
+
+  for (const u of requiredUsers) {
+    try {
+      const existing = await getUserByEmail(u.email);
+      if (!existing) {
+        const created = await createUserWithRole(u.email, u.password, u.name, u.role);
+        console.log(`[AxeTask DB] Created user ${u.email} (${u.role})`);
+        const workspaces = await db.select().from(schema.workspaces);
+        for (const ws of workspaces) {
+          try {
+            await addWorkspaceMember(ws.id, created.id, u.role === 'admin' ? 'admin' : 'member');
+          } catch (e) {
+            // Member might already exist
+          }
+        }
+      } else {
+        const password_hash = hashPassword(u.password);
+        await db.update(schema.users)
+          .set({
+            role: u.role,
+            password_hash,
+            name: u.name,
+          })
+          .where(eq(schema.users.email, u.email.toLowerCase().trim()));
+      }
+    } catch (err) {
+      console.warn(`[AxeTask DB] Could not sync user ${u.email}:`, err);
+    }
+  }
+}

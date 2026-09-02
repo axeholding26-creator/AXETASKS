@@ -34,12 +34,12 @@ const STORAGE_KEY_SOUND_ENABLED = 'axetask_sound_enabled';
 const STORAGE_KEY_SOUND_VOLUME = 'axetask_sound_volume';
 
 export function getSoundSettings(): SoundConfig {
-  if (typeof window === 'undefined') return { enabled: true, volume: 0.7 };
+  if (typeof window === 'undefined') return { enabled: true, volume: 1.0 };
   const savedEnabled = localStorage.getItem(STORAGE_KEY_SOUND_ENABLED);
   const savedVol = localStorage.getItem(STORAGE_KEY_SOUND_VOLUME);
   return {
     enabled: savedEnabled !== null ? savedEnabled === 'true' : true,
-    volume: savedVol !== null ? parseFloat(savedVol) : 0.7,
+    volume: savedVol !== null ? parseFloat(savedVol) : 1.0,
   };
 }
 
@@ -210,16 +210,11 @@ function playSubtleTap(ctx: AudioContext, masterGain: GainNode) {
   osc.stop(now + 0.06);
 }
 
-const ALL_EFFECTS: SoundEffectType[] = [
-  'crystal_bell',
-  'marimba_pop',
-  'digital_ping',
-  'harmonic_success',
-  'harp_chime'
-];
+// Unified signature notification sound for AxeTask
+export const UNIFIED_NOTIFICATION_SOUND: SoundEffectType = 'harmonic_success';
 
 /**
- * Main function: Plays a notification sound by type or randomly selects one
+ * Main function: Plays a notification sound (defaults to unified AxeTask signature tone)
  */
 export function playNotificationSound(specificType?: SoundEffectType): string {
   const { enabled, volume } = getSoundSettings();
@@ -228,12 +223,12 @@ export function playNotificationSound(specificType?: SoundEffectType): string {
   const ctx = getAudioContext();
   if (!ctx) return 'unsupported';
 
-  // Random sound selection if none specified
-  const type = specificType || ALL_EFFECTS[Math.floor(Math.random() * ALL_EFFECTS.length)];
+  // Force unified signature sound unless explicitly testing a specific sound
+  const type = specificType || UNIFIED_NOTIFICATION_SOUND;
 
   try {
     const masterGain = ctx.createGain();
-    masterGain.gain.setValueAtTime(volume * 0.8, ctx.currentTime);
+    masterGain.gain.setValueAtTime(volume * 1.8, ctx.currentTime); // Balanced volume (louder than original, less than 3.0)
     masterGain.connect(ctx.destination);
 
     switch (type) {
@@ -255,6 +250,9 @@ export function playNotificationSound(specificType?: SoundEffectType): string {
       case 'subtle_tap':
         playSubtleTap(ctx, masterGain);
         break;
+      default:
+        playDigitalPing(ctx, masterGain);
+        break;
     }
 
     return type;
@@ -265,8 +263,8 @@ export function playNotificationSound(specificType?: SoundEffectType): string {
 }
 
 /**
- * Plays a random sound on general notifications or events
+ * Plays the unified signature notification sound for AxeTask
  */
 export function playRandomNotificationSound(): string {
-  return playNotificationSound();
+  return playNotificationSound(UNIFIED_NOTIFICATION_SOUND);
 }
