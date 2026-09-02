@@ -15,6 +15,7 @@ import { TaskDetailDrawer } from './components/tasks/TaskDetailDrawer';
 import { CreateTaskModal } from './components/modals/CreateTaskModal';
 import { CreateProjectModal } from './components/modals/CreateProjectModal';
 import { CreateWorkspaceModal } from './components/modals/CreateWorkspaceModal';
+import { BrandLogo } from './components/common/BrandLogo';
 
 type NavigationTab = 
   | 'dashboard' 
@@ -29,6 +30,14 @@ function MainAppLayout() {
   const { currentWorkspace, currentProject, setCurrentProjectId } = useWorkspace();
   const [currentView, setCurrentView] = useState<NavigationTab>('dashboard');
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const [minLoadingTimePassed, setMinLoadingTimePassed] = useState(false);
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setMinLoadingTimePassed(true);
+    }, 2000);
+    return () => clearTimeout(timer);
+  }, []);
 
   // Auto route if project is selected
   useEffect(() => {
@@ -37,11 +46,14 @@ function MainAppLayout() {
     }
   }, [currentProject?.id]);
 
-  if (loading) {
+  if (loading || !minLoadingTimePassed) {
     return (
-      <div className="min-h-screen bg-[#090D16] flex flex-col items-center justify-center text-slate-400 font-mono">
-        <div className="w-8 h-8 border-2 border-[#2563EB]/20 border-t-[#2563EB] rounded-full animate-spin mb-3" />
-        <p className="text-xs font-semibold text-slate-300">Initialisation de Axe Task...</p>
+      <div className="min-h-screen bg-[#090D16] flex flex-col items-center justify-center font-mono">
+        <img 
+          src="/axetask.png" 
+          alt="AxeTask Logo" 
+          className="w-48 h-48 sm:w-64 sm:h-64 object-contain animate-pulse" 
+        />
       </div>
     );
   }
@@ -51,8 +63,8 @@ function MainAppLayout() {
   }
 
   return (
-    <div className="min-h-screen bg-[#090D16] text-slate-100 flex flex-col selection:bg-[#2563EB]/30 selection:text-[#93C5FD] font-mono">
-      {/* Top Fixed Navbar */}
+    <div className="bg-[#090D16] text-slate-100 selection:bg-[#2563EB]/30 selection:text-[#93C5FD] font-mono">
+      {/* Navbar — truly fixed, always at top */}
       <Navbar
         onOpenSettings={() => setCurrentView('settings')}
         onOpenTimeTracking={() => setCurrentView('time_tracking')}
@@ -61,53 +73,50 @@ function MainAppLayout() {
         onMenuToggle={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
       />
 
-      {/* Main Workspace Layout */}
-      <div className="flex-1 flex overflow-hidden">
-        {/* Left Sidebar */}
-        <Sidebar
-          currentView={currentView}
-          onNavigate={(view) => {
-            setCurrentView(view);
-            setIsMobileMenuOpen(false); // Close menu on navigate on mobile
-          }}
-          isOpen={isMobileMenuOpen}
-          onClose={() => setIsMobileMenuOpen(false)}
-        />
+      {/* Sidebar — fixed, never scrolls */}
+      <Sidebar
+        currentView={currentView}
+        onNavigate={(view) => {
+          setCurrentView(view);
+          setIsMobileMenuOpen(false);
+        }}
+        isOpen={isMobileMenuOpen}
+        onClose={() => setIsMobileMenuOpen(false)}
+      />
 
-        {/* Content Area */}
-        <main className="flex-1 overflow-y-auto bg-[#090D16] relative">
-          {currentView === 'dashboard' && <GlobalDashboard />}
+      {/* Main content — body is the scroll container (fixes fixed positioning on mobile) */}
+      <main className="min-h-screen bg-[#090D16] pt-14 md:pl-60 relative">
+        {currentView === 'dashboard' && <GlobalDashboard />}
 
-          {currentView === 'workspaces' && (
-            <WorkspacesList
-              onSelectWorkspace={(wsId) => {
-                setCurrentView('workspace_detail');
-              }}
-            />
-          )}
+        {currentView === 'workspaces' && (
+          <WorkspacesList
+            onSelectWorkspace={(wsId) => {
+              setCurrentView('workspace_detail');
+            }}
+          />
+        )}
 
-          {currentView === 'workspace_detail' && (
-            <WorkspaceView
-              onSelectProject={(prjId) => {
-                setCurrentProjectId(prjId);
-                setCurrentView('project_detail');
-              }}
-              onOpenSettings={() => setCurrentView('settings')}
-              onBackToWorkspaces={() => setCurrentView('workspaces')}
-            />
-          )}
+        {currentView === 'workspace_detail' && (
+          <WorkspaceView
+            onSelectProject={(prjId) => {
+              setCurrentProjectId(prjId);
+              setCurrentView('project_detail');
+            }}
+            onOpenSettings={() => setCurrentView('settings')}
+            onBackToWorkspaces={() => setCurrentView('workspaces')}
+          />
+        )}
 
-          {currentView === 'project_detail' && (
-            <ProjectView
-              onBackToWorkspace={() => setCurrentView('workspace_detail')}
-            />
-          )}
+        {currentView === 'project_detail' && (
+          <ProjectView
+            onBackToWorkspace={() => setCurrentView('workspace_detail')}
+          />
+        )}
 
-          {currentView === 'time_tracking' && <TimeTrackingView />}
+        {currentView === 'time_tracking' && <TimeTrackingView />}
 
-          {currentView === 'settings' && <SettingsView />}
-        </main>
-      </div>
+        {currentView === 'settings' && <SettingsView />}
+      </main>
 
       {/* Modals & Overlays */}
       <TaskDetailDrawer />

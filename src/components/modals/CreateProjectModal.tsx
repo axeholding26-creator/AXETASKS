@@ -3,6 +3,7 @@ import { useWorkspace } from '../../context/WorkspaceContext';
 import { useToast } from '../../context/ToastContext';
 import { api } from '../../lib/api';
 import { FolderGit2, X, Plus } from 'lucide-react';
+import { CalendarPicker } from '../common/CalendarPicker';
 
 export const CreateProjectModal: React.FC = () => {
   const { notify } = useToast();
@@ -113,15 +114,14 @@ export const CreateProjectModal: React.FC = () => {
             />
           </div>
 
-          <div>
+          <div className="relative z-10">
             <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">
               Date d'échéance cible
             </label>
-            <input
-              type="date"
+            <CalendarPicker
               value={deadline}
-              onChange={e => setDeadline(e.target.value)}
-              className="w-full px-3 py-1.5 rounded bg-[#090D16] border border-[#1E293B] text-xs text-slate-200 focus:outline-none focus:border-[#2563EB]/60 cursor-pointer"
+              onChange={setDeadline}
+              placeholder="Sélectionner une date"
             />
           </div>
 

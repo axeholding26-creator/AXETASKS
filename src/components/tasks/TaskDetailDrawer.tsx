@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { ConfirmDialog, useConfirm } from '../common/ConfirmDialog';
 import { useWorkspace } from '../../context/WorkspaceContext';
 import { useAuth } from '../../context/AuthContext';
 import { api } from '../../lib/api';
@@ -35,6 +36,7 @@ export const TaskDetailDrawer: React.FC = () => {
     activeTimer, 
     currentWorkspace 
   } = useWorkspace();
+  const { confirmProps, confirm } = useConfirm();
 
   const [task, setTask] = useState<Task | null>(null);
   const [loading, setLoading] = useState(true);
@@ -237,7 +239,13 @@ export const TaskDetailDrawer: React.FC = () => {
 
   const handleDeleteTask = async () => {
     if (!task) return;
-    if (!window.confirm('Voulez-vous vraiment supprimer cette tâche ?')) return;
+    const ok = await confirm({
+      title: 'Supprimer la tâche',
+      message: `Voulez-vous vraiment supprimer "${task.title}" ?\n\nCette action est irréversible.`,
+      confirmLabel: 'Supprimer',
+      variant: 'danger',
+    });
+    if (!ok) return;
     try {
       await api.deleteTask(task.id);
       setSelectedTaskId(null);
@@ -254,6 +262,7 @@ export const TaskDetailDrawer: React.FC = () => {
 
   return (
     <div className="fixed inset-0 z-50 overflow-hidden bg-black/80 backdrop-blur-sm flex justify-end animate-in fade-in duration-150 font-mono">
+      <ConfirmDialog {...confirmProps} />
       <div className="w-full max-w-2xl bg-[#090D16] border-l border-[#1E293B] h-full flex flex-col shadow-2xl animate-in slide-in-from-right duration-200">
         {/* Header */}
         <div className="p-3.5 border-b border-[#1E293B] bg-[#0B1120] flex items-center justify-between gap-4">

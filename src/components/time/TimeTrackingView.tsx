@@ -4,6 +4,7 @@ import { useWorkspace } from '../../context/WorkspaceContext';
 import { api } from '../../lib/api';
 import { TimeEntry, Project, User } from '../../types';
 import { Avatar } from '../common/Avatar';
+import { ConfirmDialog, useConfirm } from '../common/ConfirmDialog';
 import { 
   Clock, 
   Download, 
@@ -21,6 +22,7 @@ import {
 export const TimeTrackingView: React.FC = () => {
   const { user } = useAuth();
   const { workspaces, setSelectedTaskId } = useWorkspace();
+  const { confirmProps, confirm } = useConfirm();
 
   const [entries, setEntries] = useState<TimeEntry[]>([]);
   const [loading, setLoading] = useState(true);
@@ -51,7 +53,13 @@ export const TimeTrackingView: React.FC = () => {
   }, [selectedWorkspaceId, selectedProjectId, user]);
 
   const handleDeleteEntry = async (id: string) => {
-    if (!window.confirm('Voulez-vous supprimer cette entrée de temps ?')) return;
+    const ok = await confirm({
+      title: 'Supprimer l\'entrée de temps',
+      message: 'Voulez-vous supprimer cette session de temps ?\n\nCette action est irréversible.',
+      confirmLabel: 'Supprimer',
+      variant: 'danger',
+    });
+    if (!ok) return;
     try {
       await api.deleteTimeEntry(id);
       loadEntries();
@@ -146,6 +154,7 @@ export const TimeTrackingView: React.FC = () => {
 
   return (
     <div className="p-5 max-w-7xl mx-auto space-y-5 animate-in fade-in duration-150 font-mono">
+      <ConfirmDialog {...confirmProps} />
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>

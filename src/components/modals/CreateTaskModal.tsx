@@ -4,7 +4,8 @@ import { useAuth } from '../../context/AuthContext';
 import { useToast } from '../../context/ToastContext';
 import { api } from '../../lib/api';
 import { Project, User, Tag, TaskPriority, TaskStatus } from '../../types';
-import { X, Plus, Calendar, Tag as TagIcon, Check } from 'lucide-react';
+import { X, Plus, Tag as TagIcon, Check } from 'lucide-react';
+import { CalendarPicker } from '../common/CalendarPicker';
 
 export const CreateTaskModal: React.FC = () => {
   const { user } = useAuth();
@@ -241,11 +242,9 @@ export const CreateTaskModal: React.FC = () => {
               <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">
                 Échéance
               </label>
-              <input
-                type="date"
+              <CalendarPicker
                 value={dueDate}
-                onChange={e => setDueDate(e.target.value)}
-                className="w-full px-2 py-1 rounded bg-[#090D16] border border-[#1E293B] text-xs text-slate-200 focus:outline-none focus:border-[#2563EB]/60 cursor-pointer"
+                onChange={setDueDate}
               />
             </div>
           </div>

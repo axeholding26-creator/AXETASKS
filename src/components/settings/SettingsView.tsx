@@ -6,6 +6,7 @@ import { SoundEffectType } from '../../lib/sound';
 import { api } from '../../lib/api';
 import { WorkspaceMember, Tag, WorkspaceRole, User as UserType } from '../../types';
 import { Avatar } from '../common/Avatar';
+import { ConfirmDialog, useConfirm } from '../common/ConfirmDialog';
 import { RoleBadge } from '../common/Badge';
 import { 
   Settings, 
@@ -48,6 +49,7 @@ export const SettingsView: React.FC = () => {
     updateVolume, 
     playTestSound 
   } = useToast();
+  const { confirmProps, confirm } = useConfirm();
 
   const isGlobalAdmin = user?.role === 'admin';
   const isWorkspaceAdmin = isGlobalAdmin || currentWorkspace?.my_role === 'admin';
@@ -160,7 +162,13 @@ export const SettingsView: React.FC = () => {
 
   // Remove member from workspace
   const handleRemoveMember = async (memberId: string) => {
-    if (!window.confirm("Voulez-vous retirer ce membre de l'espace de travail ?")) return;
+    const ok = await confirm({
+      title: 'Retirer le membre',
+      message: "Voulez-vous retirer ce membre de l'espace de travail ?\n\nIl perdra l'accès à tous les projets de cet espace.",
+      confirmLabel: 'Retirer',
+      variant: 'danger',
+    });
+    if (!ok) return;
     try {
       await api.removeWorkspaceMember(memberId);
       loadData();
@@ -262,6 +270,27 @@ export const SettingsView: React.FC = () => {
     }
   };
 
+  // Delete Workspace
+  const handleDeleteWorkspace = async () => {
+    if (!currentWorkspace) return;
+    const ok = await confirm({
+      title: `Supprimer l'espace "${currentWorkspace.name}"`,
+      message: `Cette action est DÉFINITIVE.\n\nTous les projets, tâches et données associés seront détruits définitivement.`,
+      confirmLabel: 'Supprimer définitivement',
+      variant: 'danger',
+    });
+    if (!ok) return;
+    try {
+      setIsUpdatingWs(true);
+      await api.deleteWorkspace(currentWorkspace.id);
+      await refreshWorkspaces();
+    } catch (err: any) {
+      alert(err.message || "Erreur lors de la suppression de l'espace.");
+    } finally {
+      setIsUpdatingWs(false);
+    }
+  };
+
   const filteredUsers = allUsers.filter(u => 
     u.name.toLowerCase().includes(userSearch.toLowerCase()) ||
     u.email.toLowerCase().includes(userSearch.toLowerCase())
@@ -277,6 +306,7 @@ export const SettingsView: React.FC = () => {
 
   return (
     <div className="p-5 max-w-5xl mx-auto space-y-5 animate-in fade-in duration-150 font-mono">
+      <ConfirmDialog {...confirmProps} />
       {/* Header */}
       <div>
         <div className="flex items-center gap-1.5 text-[10px] font-bold text-[#60A5FA] uppercase tracking-wider mb-1">
@@ -742,7 +772,8 @@ export const SettingsView: React.FC = () => {
 
       {/* TAB: WORKSPACE SETTINGS */}
       {activeTab === 'workspace' && isWorkspaceAdmin && (
-        <form onSubmit={handleSaveWorkspace} className="space-y-4">
+        <>
+          <form onSubmit={handleSaveWorkspace} className="space-y-4">
           <div className="p-4 rounded bg-[#0F172A] border border-[#1E293B] space-y-3.5">
             <h3 className="text-xs font-bold text-slate-200 uppercase tracking-wide">
               Personnalisation de l'espace
@@ -785,6 +816,28 @@ export const SettingsView: React.FC = () => {
             </div>
           </div>
         </form>
+
+        {/* Danger Zone */}
+        <div className="p-5 rounded-lg bg-rose-500/5 border border-rose-500/20 space-y-4">
+          <h3 className="text-sm font-bold text-rose-400 uppercase tracking-wide flex items-center gap-2">
+            <Trash2 className="w-4 h-4" />
+            Zone dangereuse
+          </h3>
+          <p className="text-xs text-rose-300/80 max-w-2xl leading-relaxed">
+            La suppression d'un espace de travail est définitive. Tous les projets, tâches, tags et membres qui y sont rattachés perdront accès à ces données, et elles seront détruites de manière permanente.
+          </p>
+          <div className="pt-2">
+            <button
+              type="button"
+              onClick={handleDeleteWorkspace}
+              disabled={isUpdatingWs}
+              className="px-4 py-2 rounded bg-rose-500/10 hover:bg-rose-500 text-rose-500 hover:text-white border border-rose-500/30 hover:border-rose-500 font-bold text-xs shadow-sm transition-all"
+            >
+              Supprimer l'espace de travail
+            </button>
+          </div>
+        </div>
+      </>
       )}
 
       {/* TAB: SONS & ALERTES (AUDIO ENGINE & NOTIFICATIONS) */}

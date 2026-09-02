@@ -5,6 +5,7 @@ import { api } from '../../lib/api';
 import { Task, TaskStatus, TaskPriority, Tag, User } from '../../types';
 import { StatusBadge, PriorityBadge } from '../common/Badge';
 import { Avatar } from '../common/Avatar';
+import { EditProjectModal } from '../common/EditModal';
 import confetti from 'canvas-confetti';
 import { 
   Kanban as KanbanIcon, 
@@ -24,7 +25,8 @@ import {
   Tag as TagIcon,
   Trash2,
   CheckCircle2,
-  AlertCircle
+  AlertCircle,
+  Edit2
 } from 'lucide-react';
 
 const KANBAN_COLUMNS: { id: TaskStatus; title: string; color: string; border: string }[] = [
@@ -53,6 +55,9 @@ export const ProjectView: React.FC<ProjectViewProps> = ({ onBackToWorkspace }) =
   const [tasks, setTasks] = useState<Task[]>([]);
   const [loading, setLoading] = useState(true);
   const [viewMode, setViewMode] = useState<'kanban' | 'list'>('kanban');
+  const [isEditProjectOpen, setIsEditProjectOpen] = useState(false);
+
+  const isWorkspaceAdmin = user?.role === 'admin' || currentWorkspace?.my_role === 'admin';
 
   // Filters
   const [search, setSearch] = useState('');
@@ -89,6 +94,18 @@ export const ProjectView: React.FC<ProjectViewProps> = ({ onBackToWorkspace }) =
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleSaveProject = async (data: { name: string; description: string; deadline: string; status: string }) => {
+    if (!currentProject) return;
+    await api.updateProject(currentProject.id, {
+      name: data.name,
+      description: data.description || undefined,
+      deadline: data.deadline || undefined,
+      status: data.status as any,
+    });
+    // Refresh project data to reflect name change in header
+    await loadProjectData();
   };
 
   useEffect(() => {
@@ -198,6 +215,18 @@ export const ProjectView: React.FC<ProjectViewProps> = ({ onBackToWorkspace }) =
 
   return (
     <div className="p-6 max-w-[1600px] mx-auto space-y-4 animate-in fade-in duration-150 font-mono">
+      {/* Edit Project Modal */}
+      {currentProject && (
+        <EditProjectModal
+          isOpen={isEditProjectOpen}
+          initialName={currentProject.name}
+          initialDescription={currentProject.description || ''}
+          initialDeadline={currentProject.deadline || ''}
+          initialStatus={currentProject.status}
+          onSave={handleSaveProject}
+          onClose={() => setIsEditProjectOpen(false)}
+        />
+      )}
       {/* Breadcrumb & Header */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-[#1E293B] pb-4">
         <div>
@@ -230,6 +259,17 @@ export const ProjectView: React.FC<ProjectViewProps> = ({ onBackToWorkspace }) =
 
         {/* Action Controls: View Switcher & Add Task */}
         <div className="flex items-center gap-2.5 self-start md:self-auto">
+          {/* Edit project button - admins only */}
+          {isWorkspaceAdmin && (
+            <button
+              onClick={() => setIsEditProjectOpen(true)}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded bg-[#1E293B] hover:bg-[#334155] text-slate-300 hover:text-slate-100 border border-[#1E293B] text-xs font-bold transition-all"
+              title="Modifier le projet"
+            >
+              <Edit2 className="w-3.5 h-3.5" />
+              <span className="hidden sm:inline">Modifier</span>
+            </button>
+          )}
           {/* View Mode Toggle */}
           <div className="p-0.5 rounded bg-[#0F172A] border border-[#1E293B] flex items-center gap-0.5">
             <button

@@ -4,6 +4,8 @@ import { useAuth } from '../../context/AuthContext';
 import { api } from '../../lib/api';
 import { Project, WorkspaceMember } from '../../types';
 import { Avatar } from '../common/Avatar';
+import { ConfirmDialog, useConfirm } from '../common/ConfirmDialog';
+import { EditWorkspaceModal } from '../common/EditModal';
 import { 
   FolderGit2, 
   Plus, 
@@ -35,12 +37,15 @@ export const WorkspaceView: React.FC<WorkspaceViewProps> = ({
   const { 
     currentWorkspace, 
     setCurrentProjectId, 
-    setIsCreateProjectModalOpen 
+    setIsCreateProjectModalOpen,
+    refreshWorkspaces
   } = useWorkspace();
+  const { confirmProps, confirm } = useConfirm();
 
   const [projects, setProjects] = useState<Project[]>([]);
   const [members, setMembers] = useState<WorkspaceMember[]>([]);
   const [loading, setLoading] = useState(true);
+  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
 
   const isWorkspaceAdmin = user?.role === 'admin' || currentWorkspace?.my_role === 'admin';
 
@@ -61,15 +66,45 @@ export const WorkspaceView: React.FC<WorkspaceViewProps> = ({
     }
   };
 
+  const handleDeleteWorkspace = async () => {
+    if (!currentWorkspace) return;
+    const ok = await confirm({
+      title: `Supprimer l'espace "${currentWorkspace.name}"`,
+      message: `Cette action est DÉFINITIVE.\n\nTous les projets, tâches et données associés à cet espace seront détruits définitivement.`,
+      confirmLabel: 'Supprimer définitivement',
+      cancelLabel: 'Annuler',
+      variant: 'danger',
+    });
+    if (!ok) return;
+    try {
+      await api.deleteWorkspace(currentWorkspace.id);
+      await refreshWorkspaces();
+      onBackToWorkspaces();
+    } catch (err: any) {
+      alert(err.message || "Erreur lors de la suppression de l'espace.");
+    }
+  };
+
+  const handleSaveWorkspace = async (data: { name: string; color: string }) => {
+    if (!currentWorkspace) return;
+    await api.updateWorkspace(currentWorkspace.id, { name: data.name, color: data.color });
+    await refreshWorkspaces();
+    await loadData();
+  };
+
   useEffect(() => {
     loadData();
   }, [currentWorkspace?.id]);
 
   const handleDeleteProject = async (projectId: string, e: React.MouseEvent) => {
     e.stopPropagation();
-    if (!window.confirm('Voulez-vous vraiment supprimer ce projet et toutes ses tâches ?')) {
-      return;
-    }
+    const ok = await confirm({
+      title: 'Supprimer le projet',
+      message: 'Voulez-vous vraiment supprimer ce projet ?\n\nToutes les tâches associées seront supprimées définitivement.',
+      confirmLabel: 'Supprimer',
+      variant: 'danger',
+    });
+    if (!ok) return;
     try {
       await api.deleteProject(projectId);
       loadData();
@@ -88,6 +123,16 @@ export const WorkspaceView: React.FC<WorkspaceViewProps> = ({
 
   return (
     <div className="p-5 max-w-7xl mx-auto space-y-5 animate-in fade-in duration-150 font-mono">
+      <ConfirmDialog {...confirmProps} />
+      {currentWorkspace && (
+        <EditWorkspaceModal
+          isOpen={isEditModalOpen}
+          initialName={currentWorkspace.name}
+          initialColor={currentWorkspace.color}
+          onSave={handleSaveWorkspace}
+          onClose={() => setIsEditModalOpen(false)}
+        />
+      )}
       {/* Back button & Breadcrumb */}
       <div className="flex items-center gap-2 text-xs font-semibold text-slate-400">
         <button
@@ -134,21 +179,46 @@ export const WorkspaceView: React.FC<WorkspaceViewProps> = ({
 
           {/* Action buttons */}
           <div className="flex items-center gap-2.5">
+            {isWorkspaceAdmin && (
+              <>
+                <button
+                  onClick={() => setIsEditModalOpen(true)}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded bg-[#1E293B] hover:bg-[#334155] text-slate-300 hover:text-slate-100 border border-[#1E293B] hover:border-[#334155] text-xs font-bold transition-all shadow-sm"
+                  title="Modifier l'espace"
+                >
+                  <Edit2 className="w-3.5 h-3.5" />
+                  <span className="hidden sm:inline">Modifier</span>
+                </button>
+
+                <button
+                  onClick={handleDeleteWorkspace}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded bg-rose-500/10 hover:bg-rose-500 text-rose-500 hover:text-white border border-rose-500/30 hover:border-rose-500 text-xs font-bold transition-all shadow-sm"
+                  title="Supprimer l'espace"
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                  <span className="hidden sm:inline">Supprimer</span>
+                </button>
+              </>
+            )}
+
             <button
               onClick={onOpenSettings}
               className="flex items-center gap-1.5 px-3 py-1.5 rounded bg-[#090D16] border border-[#1E293B] hover:bg-[#0F172A] text-xs font-semibold text-slate-300 transition-colors"
             >
               <Users className="w-3.5 h-3.5 text-slate-400" />
-              <span>Gérer les membres ({members.length})</span>
+              <span className="hidden sm:inline">Gérer les membres ({members.length})</span>
+              <span className="sm:hidden">{members.length}</span>
             </button>
 
-            <button
-              onClick={() => setIsCreateProjectModalOpen(true)}
-              className="flex items-center gap-2 px-3.5 py-1.5 rounded bg-[#2563EB] hover:bg-[#1D4ED8] text-white font-bold text-xs shadow-sm shadow-blue-500/25 transition-all"
-            >
-              <Plus className="w-3.5 h-3.5 stroke-[2.5]" />
-              <span>Nouveau projet</span>
-            </button>
+            {isWorkspaceAdmin && (
+              <button
+                onClick={() => setIsCreateProjectModalOpen(true)}
+                className="flex items-center gap-2 px-3.5 py-1.5 rounded bg-[#2563EB] hover:bg-[#1D4ED8] text-white font-bold text-xs shadow-sm shadow-blue-500/25 transition-all"
+              >
+                <Plus className="w-3.5 h-3.5 stroke-[2.5]" />
+                <span>Nouveau projet</span>
+              </button>
+            )}
           </div>
         </div>
 
@@ -259,20 +329,22 @@ export const WorkspaceView: React.FC<WorkspaceViewProps> = ({
           })}
 
           {/* Create Project Card */}
-          <button
-            onClick={() => setIsCreateProjectModalOpen(true)}
-            className="p-5 rounded border border-dashed border-[#1E293B] hover:border-[#2563EB]/50 bg-[#0F172A]/40 hover:bg-[#0F172A] transition-all flex flex-col items-center justify-center text-center group min-h-[170px]"
-          >
-            <div className="w-9 h-9 rounded bg-[#2563EB]/10 border border-[#2563EB]/20 group-hover:bg-[#2563EB]/20 flex items-center justify-center text-[#3B82F6] transition-colors mb-2">
-              <Plus className="w-4 h-4" />
-            </div>
-            <h4 className="text-xs font-bold text-slate-200 group-hover:text-[#60A5FA]">
-              Créer un projet
-            </h4>
-            <p className="text-[10px] text-slate-500 mt-0.5">
-              Ajoutez un tableau Kanban pour cette venture.
-            </p>
-          </button>
+          {isWorkspaceAdmin && (
+            <button
+              onClick={() => setIsCreateProjectModalOpen(true)}
+              className="p-5 rounded border border-dashed border-[#1E293B] hover:border-[#2563EB]/50 bg-[#0F172A]/40 hover:bg-[#0F172A] transition-all flex flex-col items-center justify-center text-center group min-h-[170px]"
+            >
+              <div className="w-9 h-9 rounded bg-[#2563EB]/10 border border-[#2563EB]/20 group-hover:bg-[#2563EB]/20 flex items-center justify-center text-[#3B82F6] transition-colors mb-2">
+                <Plus className="w-4 h-4" />
+              </div>
+              <h4 className="text-xs font-bold text-slate-200 group-hover:text-[#60A5FA]">
+                Créer un projet
+              </h4>
+              <p className="text-[10px] text-slate-500 mt-0.5">
+                Ajoutez un tableau Kanban pour cette venture.
+              </p>
+            </button>
+          )}
         </div>
       </div>
     </div>

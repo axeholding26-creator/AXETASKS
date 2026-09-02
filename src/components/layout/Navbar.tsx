@@ -147,7 +147,7 @@ export const Navbar: React.FC<NavbarProps> = ({
   }, [searchQuery]);
 
   return (
-    <header className="h-14 border-b border-[#1E293B] bg-[#0B1120]/95 backdrop-blur-md sticky top-0 z-30 md:z-[60] px-4 lg:px-6 flex items-center justify-between gap-4">
+    <header className="fixed top-0 w-full h-14 border-b border-[#1E293B] bg-[#0B1120]/95 backdrop-blur-md z-30 md:z-[60] px-4 lg:px-6 flex items-center justify-between gap-4">
       {/* Left: Brand + Workspace Switcher */}
       <div className="flex items-center gap-4 lg:gap-6">
         {onMenuToggle && (
