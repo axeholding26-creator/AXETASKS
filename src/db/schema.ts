@@ -103,6 +103,30 @@ export const timeEntries = pgTable('time_entries', {
   created_at: timestamp('created_at').defaultNow(),
 });
 
+export const conversations = pgTable('conversations', {
+  id: text('id').primaryKey(),
+  is_group: boolean('is_group').notNull().default(false),
+  name: text('name'),
+  created_by: text('created_by').references(() => users.id),
+  created_at: timestamp('created_at').defaultNow(),
+});
+
+export const conversationParticipants = pgTable('conversation_participants', {
+  id: text('id').primaryKey(),
+  conversation_id: text('conversation_id').notNull().references(() => conversations.id, { onDelete: 'cascade' }),
+  user_id: text('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  joined_at: timestamp('joined_at').defaultNow(),
+  last_read_at: timestamp('last_read_at'),
+});
+
+export const messages = pgTable('messages', {
+  id: text('id').primaryKey(),
+  conversation_id: text('conversation_id').notNull().references(() => conversations.id, { onDelete: 'cascade' }),
+  sender_id: text('sender_id').notNull().references(() => users.id),
+  content: text('content').notNull(),
+  created_at: timestamp('created_at').defaultNow(),
+});
+
 // Relationships
 export const usersRelations = relations(users, ({ many }) => ({
   workspacesCreated: many(workspaces),
@@ -212,6 +236,33 @@ export const timeEntriesRelations = relations(timeEntries, ({ one }) => ({
   }),
   user: one(users, {
     fields: [timeEntries.user_id],
+    references: [users.id],
+  }),
+}));
+
+export const conversationsRelations = relations(conversations, ({ many }) => ({
+  participants: many(conversationParticipants),
+  messages: many(messages),
+}));
+
+export const conversationParticipantsRelations = relations(conversationParticipants, ({ one }) => ({
+  conversation: one(conversations, {
+    fields: [conversationParticipants.conversation_id],
+    references: [conversations.id],
+  }),
+  user: one(users, {
+    fields: [conversationParticipants.user_id],
+    references: [users.id],
+  }),
+}));
+
+export const messagesRelations = relations(messages, ({ one }) => ({
+  conversation: one(conversations, {
+    fields: [messages.conversation_id],
+    references: [conversations.id],
+  }),
+  sender: one(users, {
+    fields: [messages.sender_id],
     references: [users.id],
   }),
 }));

@@ -1,29 +1,51 @@
-import { eq, and, desc, asc, inArray, sql } from 'drizzle-orm';
+import { eq, and, desc, asc, inArray, ne, isNull, sql } from 'drizzle-orm';
 import { db } from './index.ts';
 import * as schema from './schema.ts';
 import crypto from 'crypto';
-import { 
-  User, 
-  Workspace, 
-  WorkspaceMember, 
-  Project, 
-  Task, 
-  Subtask, 
-  Comment, 
-  Attachment, 
-  TimeEntry, 
-  Tag, 
-  TaskStatus, 
+import bcrypt from 'bcryptjs';
+import {
+  User,
+  Workspace,
+  WorkspaceMember,
+  Project,
+  Task,
+  Subtask,
+  Comment,
+  Attachment,
+  TimeEntry,
+  Tag,
+  TaskStatus,
   TaskPriority,
-  WorkspaceMemberRole
+  WorkspaceMemberRole,
+  Conversation,
+  Message
 } from '../types.ts';
 
 function generateId(prefix: string = ''): string {
   return prefix ? `${prefix}_${crypto.randomBytes(8).toString('hex')}` : crypto.randomUUID();
 }
 
+const BCRYPT_ROUNDS = 12;
+
 export function hashPassword(password: string): string {
-  return crypto.createHash('sha256').update(password).digest('hex');
+  return bcrypt.hashSync(password, BCRYPT_ROUNDS);
+}
+
+// Legacy unsalted SHA-256 hashes (pre-bcrypt migration) are 64 hex chars.
+function isLegacySha256Hash(hash: string): boolean {
+  return /^[a-f0-9]{64}$/i.test(hash);
+}
+
+export function verifyPassword(password: string, hash: string): boolean {
+  if (!hash) return false;
+  if (isLegacySha256Hash(hash)) {
+    return crypto.createHash('sha256').update(password).digest('hex') === hash;
+  }
+  try {
+    return bcrypt.compareSync(password, hash);
+  } catch {
+    return false;
+  }
 }
 
 // ----------------- USERS -----------------
@@ -202,7 +224,11 @@ export async function deleteUser(id: string): Promise<boolean> {
     // 6. Delete all workspace memberships for this user
     await db.delete(schema.workspaceMembers).where(eq(schema.workspaceMembers.user_id, id));
 
-    // 7. Delete the user record
+    // 7. Delete messages sent by this user, then their conversation memberships
+    await db.delete(schema.messages).where(eq(schema.messages.sender_id, id));
+    await db.delete(schema.conversationParticipants).where(eq(schema.conversationParticipants.user_id, id));
+
+    // 8. Delete the user record
     await db.delete(schema.users).where(eq(schema.users.id, id));
 
     return true;
@@ -1233,54 +1259,226 @@ export async function getTimeEntries(
   }
 }
 
-export async function ensureRequiredUsers(): Promise<void> {
-  const requiredUsers = [
-    {
-      email: 'axedigital00@gmail.com',
-      name: 'Axe Digital Admin',
-      password: 'AxeTask2026!Admin1',
-      role: 'admin' as const,
-    },
-    {
-      email: 'kamenimax10@gmail.com',
-      name: 'Max Kameni',
-      password: 'Kameni2026!Admin2',
-      role: 'admin' as const,
-    },
-    {
-      email: 'membre@axetask.com',
-      name: 'Membre AxeTask',
-      password: 'Member2026!Axe',
-      role: 'member' as const,
-    },
-  ];
+// Ensures the single owner admin account exists on boot. Never overwrites an
+// existing account's password/role — that would silently undo a real password
+// change. It only creates the account the first time the database is empty,
+// and only if ADMIN_EMAIL/ADMIN_PASSWORD are set — the password is never
+// hardcoded in source so it never ends up in git history.
+export async function ensureAdminUser(): Promise<void> {
+  const ADMIN_EMAIL = process.env.ADMIN_EMAIL;
+  const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD;
+  const ADMIN_NAME = process.env.ADMIN_NAME || 'Admin';
 
-  for (const u of requiredUsers) {
-    try {
-      const existing = await getUserByEmail(u.email);
-      if (!existing) {
-        const created = await createUserWithRole(u.email, u.password, u.name, u.role);
-        console.log(`[AxeTask DB] Created user ${u.email} (${u.role})`);
-        const workspaces = await db.select().from(schema.workspaces);
-        for (const ws of workspaces) {
-          try {
-            await addWorkspaceMember(ws.id, created.id, u.role === 'admin' ? 'admin' : 'member');
-          } catch (e) {
-            // Member might already exist
-          }
-        }
-      } else {
-        const password_hash = hashPassword(u.password);
-        await db.update(schema.users)
-          .set({
-            role: u.role,
-            password_hash,
-            name: u.name,
-          })
-          .where(eq(schema.users.email, u.email.toLowerCase().trim()));
-      }
-    } catch (err) {
-      console.warn(`[AxeTask DB] Could not sync user ${u.email}:`, err);
+  if (!ADMIN_EMAIL || !ADMIN_PASSWORD) {
+    return;
+  }
+
+  try {
+    const existing = await getUserByEmail(ADMIN_EMAIL);
+    if (!existing) {
+      await createUserWithRole(ADMIN_EMAIL, ADMIN_PASSWORD, ADMIN_NAME, 'admin');
+      console.log(`[AxeTask DB] Created initial admin account ${ADMIN_EMAIL}`);
     }
+  } catch (err) {
+    console.warn('[AxeTask DB] Could not ensure admin account:', err);
+  }
+}
+
+// ----------------- CONVERSATIONS & MESSAGES -----------------
+
+async function hydrateConversation(conversationId: string, currentUserId: string): Promise<Conversation | null> {
+  const [conv] = await db.select().from(schema.conversations).where(eq(schema.conversations.id, conversationId)).limit(1);
+  if (!conv) return null;
+
+  const participantRows = await db.select().from(schema.conversationParticipants)
+    .where(eq(schema.conversationParticipants.conversation_id, conversationId));
+
+  const allUsers = await getAllUsers();
+  const participants = participantRows
+    .map(p => allUsers.find(u => u.id === p.user_id))
+    .filter((u): u is User => !!u);
+
+  const [lastMessageRow] = await db.select().from(schema.messages)
+    .where(eq(schema.messages.conversation_id, conversationId))
+    .orderBy(desc(schema.messages.created_at))
+    .limit(1);
+
+  const myParticipant = participantRows.find(p => p.user_id === currentUserId);
+  let unread_count = 0;
+  if (myParticipant) {
+    const unreadWhere = myParticipant.last_read_at
+      ? and(
+          eq(schema.messages.conversation_id, conversationId),
+          ne(schema.messages.sender_id, currentUserId),
+          sql`${schema.messages.created_at} > ${myParticipant.last_read_at}`
+        )
+      : and(
+          eq(schema.messages.conversation_id, conversationId),
+          ne(schema.messages.sender_id, currentUserId)
+        );
+    const [{ count }] = await db.select({ count: sql<number>`count(*)::int` }).from(schema.messages).where(unreadWhere);
+    unread_count = count || 0;
+  }
+
+  return {
+    id: conv.id,
+    is_group: !!conv.is_group,
+    name: conv.name,
+    created_at: conv.created_at ? conv.created_at.toISOString() : new Date().toISOString(),
+    participants,
+    last_message: lastMessageRow ? {
+      id: lastMessageRow.id,
+      conversation_id: lastMessageRow.conversation_id,
+      sender_id: lastMessageRow.sender_id,
+      content: lastMessageRow.content,
+      created_at: lastMessageRow.created_at ? lastMessageRow.created_at.toISOString() : new Date().toISOString(),
+    } : null,
+    unread_count,
+  };
+}
+
+export async function getUserConversations(userId: string): Promise<Conversation[]> {
+  try {
+    const myParticipations = await db.select().from(schema.conversationParticipants)
+      .where(eq(schema.conversationParticipants.user_id, userId));
+
+    const conversations = await Promise.all(
+      myParticipations.map(p => hydrateConversation(p.conversation_id, userId))
+    );
+
+    const valid = conversations.filter((c): c is Conversation => !!c);
+    valid.sort((a, b) => {
+      const aTime = a.last_message?.created_at || a.created_at;
+      const bTime = b.last_message?.created_at || b.created_at;
+      return new Date(bTime).getTime() - new Date(aTime).getTime();
+    });
+    return valid;
+  } catch (error) {
+    console.error('Failed to get user conversations:', error);
+    throw new Error('Database query failed. Please try again later.', { cause: error });
+  }
+}
+
+export async function userIsConversationParticipant(userId: string, conversationId: string): Promise<boolean> {
+  try {
+    const rows = await db.select().from(schema.conversationParticipants)
+      .where(and(eq(schema.conversationParticipants.conversation_id, conversationId), eq(schema.conversationParticipants.user_id, userId)))
+      .limit(1);
+    return rows.length > 0;
+  } catch (error) {
+    console.error('Failed to check conversation membership:', error);
+    return false;
+  }
+}
+
+export async function findOrCreateDirectConversation(userId: string, otherUserId: string): Promise<Conversation> {
+  if (userId === otherUserId) {
+    throw new Error('Impossible de démarrer une conversation avec soi-même.');
+  }
+  try {
+    const myConvIds = (await db.select().from(schema.conversationParticipants)
+      .where(eq(schema.conversationParticipants.user_id, userId)))
+      .map(p => p.conversation_id);
+
+    if (myConvIds.length > 0) {
+      const candidateParticipants = await db.select().from(schema.conversationParticipants)
+        .where(and(inArray(schema.conversationParticipants.conversation_id, myConvIds), eq(schema.conversationParticipants.user_id, otherUserId)));
+
+      for (const cp of candidateParticipants) {
+        const [conv] = await db.select().from(schema.conversations).where(eq(schema.conversations.id, cp.conversation_id)).limit(1);
+        if (conv && !conv.is_group) {
+          const hydrated = await hydrateConversation(conv.id, userId);
+          if (hydrated) return hydrated;
+        }
+      }
+    }
+
+    const id = generateId('conv');
+    await db.insert(schema.conversations).values({
+      id,
+      is_group: false,
+      created_by: userId,
+    });
+    await db.insert(schema.conversationParticipants).values([
+      { id: generateId('cp'), conversation_id: id, user_id: userId },
+      { id: generateId('cp'), conversation_id: id, user_id: otherUserId },
+    ]);
+
+    const hydrated = await hydrateConversation(id, userId);
+    if (!hydrated) throw new Error('Conversation created but could not be retrieved');
+    return hydrated;
+  } catch (error) {
+    console.error('Failed to find or create direct conversation:', error);
+    throw new Error('Database query failed. Please try again later.', { cause: error });
+  }
+}
+
+export async function getConversationMessages(conversationId: string, limit: number = 50, before?: string): Promise<Message[]> {
+  try {
+    const whereClause = before
+      ? and(eq(schema.messages.conversation_id, conversationId), sql`${schema.messages.created_at} < ${new Date(before)}`)
+      : eq(schema.messages.conversation_id, conversationId);
+
+    const rows = await db.select().from(schema.messages)
+      .where(whereClause)
+      .orderBy(desc(schema.messages.created_at))
+      .limit(limit);
+
+    const allUsers = await getAllUsers();
+
+    return rows.reverse().map(m => ({
+      id: m.id,
+      conversation_id: m.conversation_id,
+      sender_id: m.sender_id,
+      content: m.content,
+      created_at: m.created_at ? m.created_at.toISOString() : new Date().toISOString(),
+      sender: allUsers.find(u => u.id === m.sender_id),
+    }));
+  } catch (error) {
+    console.error('Failed to get conversation messages:', error);
+    throw new Error('Database query failed. Please try again later.', { cause: error });
+  }
+}
+
+export async function sendMessage(conversationId: string, senderId: string, content: string): Promise<Message> {
+  try {
+    const id = generateId('msg');
+    const [created] = await db.insert(schema.messages).values({
+      id,
+      conversation_id: conversationId,
+      sender_id: senderId,
+      content: content.trim(),
+    }).returning();
+
+    const u = await getUserById(senderId);
+
+    return {
+      id: created.id,
+      conversation_id: created.conversation_id,
+      sender_id: created.sender_id,
+      content: created.content,
+      created_at: created.created_at ? created.created_at.toISOString() : new Date().toISOString(),
+      sender: u ? {
+        id: u.id,
+        email: u.email,
+        name: u.name,
+        role: u.role as 'admin' | 'member',
+        avatar_url: u.avatar_url || undefined,
+      } : undefined,
+    };
+  } catch (error) {
+    console.error('Failed to send message:', error);
+    throw new Error('Database query failed. Please try again later.', { cause: error });
+  }
+}
+
+export async function markConversationRead(conversationId: string, userId: string): Promise<void> {
+  try {
+    await db.update(schema.conversationParticipants)
+      .set({ last_read_at: new Date() })
+      .where(and(eq(schema.conversationParticipants.conversation_id, conversationId), eq(schema.conversationParticipants.user_id, userId)));
+  } catch (error) {
+    console.error('Failed to mark conversation read:', error);
+    throw new Error('Database query failed. Please try again later.', { cause: error });
   }
 }

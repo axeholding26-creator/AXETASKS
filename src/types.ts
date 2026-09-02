@@ -136,6 +136,25 @@ export interface Task {
   total_time_minutes?: number;
 }
 
+export interface Message {
+  id: string;
+  conversation_id: string;
+  sender_id: string;
+  content: string;
+  created_at: string;
+  sender?: User;
+}
+
+export interface Conversation {
+  id: string;
+  is_group: boolean;
+  name?: string | null;
+  created_at: string;
+  participants: User[];
+  last_message?: Message | null;
+  unread_count: number;
+}
+
 export interface DashboardStats {
   total_assigned: number;
   due_today: number;

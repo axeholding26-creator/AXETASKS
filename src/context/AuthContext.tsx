@@ -11,7 +11,6 @@ interface AuthContextType {
   signup: (name: string, email: string, password: string) => Promise<void>;
   register: (email: string, password: string, name: string) => Promise<void>;
   logout: () => void;
-  switchDemoUser: (user: User) => Promise<void>;
   updateProfile: (name: string, avatar_url?: string) => Promise<void>;
   refreshUser: () => Promise<void>;
 }
@@ -95,18 +94,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     clearError();
   };
 
-  const switchDemoUser = async (targetUser: User) => {
-    try {
-      clearError();
-      const res = await api.login(targetUser.email, 'password123');
-      setStoredToken(res.token);
-      setUser(res.user);
-    } catch (err: any) {
-      console.error('Demo user switch error:', err);
-      setError('Impossible de basculer vers cet utilisateur démo.');
-    }
-  };
-
   const updateProfile = async (name: string, avatar_url?: string) => {
     const res = await api.updateProfile(name, avatar_url);
     setUser(res.user);
@@ -132,7 +119,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         signup,
         register,
         logout,
-        switchDemoUser,
         updateProfile,
         refreshUser,
       }}

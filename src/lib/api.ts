@@ -1,16 +1,18 @@
-import { 
-  User, 
-  Workspace, 
-  WorkspaceMember, 
-  Project, 
-  Task, 
-  Subtask, 
-  Comment, 
-  Attachment, 
-  TimeEntry, 
-  Tag, 
-  TaskStatus, 
-  TaskPriority 
+import {
+  User,
+  Workspace,
+  WorkspaceMember,
+  Project,
+  Task,
+  Subtask,
+  Comment,
+  Attachment,
+  TimeEntry,
+  Tag,
+  TaskStatus,
+  TaskPriority,
+  Conversation,
+  Message
 } from '../types';
 
 const TOKEN_KEY = 'axetask_jwt_token';
@@ -76,8 +78,6 @@ export const api = {
     }),
 
   getMe: () => fetchWithAuth<{ user: User }>('/api/auth/me'),
-
-  getDemoUsers: () => fetchWithAuth<User[]>('/api/auth/demo-users'),
 
   updateProfile: (name: string, avatar_url?: string) =>
     fetchWithAuth<{ user: User }>('/api/auth/profile', {
@@ -295,4 +295,29 @@ export const api = {
     const qs = query.toString();
     return fetchWithAuth<TimeEntry[]>(`/api/time-entries${qs ? `?${qs}` : ''}`);
   },
+
+  // Messaging
+  getConversations: () => fetchWithAuth<Conversation[]>('/api/conversations'),
+
+  startConversation: (userId: string) =>
+    fetchWithAuth<Conversation>('/api/conversations', {
+      method: 'POST',
+      body: JSON.stringify({ user_id: userId }),
+    }),
+
+  getMessages: (conversationId: string, before?: string) => {
+    const qs = before ? `?before=${encodeURIComponent(before)}` : '';
+    return fetchWithAuth<Message[]>(`/api/conversations/${conversationId}/messages${qs}`);
+  },
+
+  sendMessage: (conversationId: string, content: string) =>
+    fetchWithAuth<Message>(`/api/conversations/${conversationId}/messages`, {
+      method: 'POST',
+      body: JSON.stringify({ content }),
+    }),
+
+  markConversationRead: (conversationId: string) =>
+    fetchWithAuth<{ success: boolean }>(`/api/conversations/${conversationId}/read`, {
+      method: 'POST',
+    }),
 };

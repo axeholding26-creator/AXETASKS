@@ -2,27 +2,32 @@ import React, { useState, useEffect } from 'react';
 import { useWorkspace } from '../../context/WorkspaceContext';
 import { api } from '../../lib/api';
 import { Project } from '../../types';
-import { 
-  LayoutDashboard, 
-  Layers, 
-  Clock, 
-  Settings, 
-  Plus, 
-  FolderGit2, 
-  ChevronRight, 
-  Briefcase, 
-  ChevronDown, 
-  Users, 
+import {
+  LayoutDashboard,
+  Layers,
+  Clock,
+  Settings,
+  Plus,
+  FolderGit2,
+  ChevronRight,
+  Briefcase,
+  ChevronDown,
+  Users,
   Sparkles,
-  Kanban
+  Kanban,
+  MessageSquare
 } from 'lucide-react';
 
+type SidebarView = 'dashboard' | 'workspaces' | 'workspace_detail' | 'project_detail' | 'time_tracking' | 'messages' | 'settings';
+
 interface SidebarProps {
-  currentView: 'dashboard' | 'workspaces' | 'workspace_detail' | 'project_detail' | 'time_tracking' | 'settings';
-  onNavigate: (view: 'dashboard' | 'workspaces' | 'workspace_detail' | 'project_detail' | 'time_tracking' | 'settings') => void;
+  currentView: SidebarView;
+  onNavigate: (view: SidebarView) => void;
   isOpen: boolean;
   onClose: () => void;
 }
+
+const UNREAD_POLL_INTERVAL_MS = 15000;
 
 export const Sidebar: React.FC<SidebarProps> = ({ currentView, onNavigate, isOpen, onClose }) => {
   const { 
@@ -39,6 +44,18 @@ export const Sidebar: React.FC<SidebarProps> = ({ currentView, onNavigate, isOpe
   const [projects, setProjects] = useState<Project[]>([]);
   const [loadingProjects, setLoadingProjects] = useState(false);
   const [isProjectsExpanded, setIsProjectsExpanded] = useState(true);
+  const [unreadMessages, setUnreadMessages] = useState(0);
+
+  useEffect(() => {
+    const loadUnread = () => {
+      api.getConversations()
+        .then(convs => setUnreadMessages(convs.reduce((sum, c) => sum + c.unread_count, 0)))
+        .catch(() => {});
+    };
+    loadUnread();
+    const interval = setInterval(loadUnread, UNREAD_POLL_INTERVAL_MS);
+    return () => clearInterval(interval);
+  }, []);
 
   useEffect(() => {
     if (currentWorkspace) {
@@ -126,6 +143,25 @@ export const Sidebar: React.FC<SidebarProps> = ({ currentView, onNavigate, isOpe
               <Clock className="w-3.5 h-3.5 text-emerald-400" />
               <span>Mon Temps</span>
             </div>
+          </button>
+
+          <button
+            onClick={() => onNavigate('messages')}
+            className={`w-full flex items-center justify-between px-2.5 py-1.5 rounded text-xs transition-all ${
+              currentView === 'messages'
+                ? 'bg-[#2563EB]/15 text-[#60A5FA] font-bold border border-[#2563EB]/40 shadow-sm'
+                : 'text-slate-300 hover:bg-[#1E293B] hover:text-slate-100'
+            }`}
+          >
+            <div className="flex items-center gap-2">
+              <MessageSquare className="w-3.5 h-3.5 text-[#EC4899]" />
+              <span>Messages</span>
+            </div>
+            {unreadMessages > 0 && (
+              <span className="text-[10px] font-bold px-1.5 py-0.2 rounded-full bg-[#2563EB] text-white min-w-[16px] text-center">
+                {unreadMessages}
+              </span>
+            )}
           </button>
         </div>
 

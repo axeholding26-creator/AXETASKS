@@ -10,6 +10,7 @@ import { WorkspacesList } from './components/workspaces/WorkspacesList';
 import { WorkspaceView } from './components/workspaces/WorkspaceView';
 import { ProjectView } from './components/projects/ProjectView';
 import { TimeTrackingView } from './components/time/TimeTrackingView';
+import { MessagesView } from './components/messages/MessagesView';
 import { SettingsView } from './components/settings/SettingsView';
 import { TaskDetailDrawer } from './components/tasks/TaskDetailDrawer';
 import { CreateTaskModal } from './components/modals/CreateTaskModal';
@@ -17,12 +18,13 @@ import { CreateProjectModal } from './components/modals/CreateProjectModal';
 import { CreateWorkspaceModal } from './components/modals/CreateWorkspaceModal';
 import { BrandLogo } from './components/common/BrandLogo';
 
-type NavigationTab = 
-  | 'dashboard' 
-  | 'workspaces' 
-  | 'workspace_detail' 
-  | 'project_detail' 
-  | 'time_tracking' 
+type NavigationTab =
+  | 'dashboard'
+  | 'workspaces'
+  | 'workspace_detail'
+  | 'project_detail'
+  | 'time_tracking'
+  | 'messages'
   | 'settings';
 
 function MainAppLayout() {
@@ -114,6 +116,8 @@ function MainAppLayout() {
         )}
 
         {currentView === 'time_tracking' && <TimeTrackingView />}
+
+        {currentView === 'messages' && <MessagesView />}
 
         {currentView === 'settings' && <SettingsView />}
       </main>
