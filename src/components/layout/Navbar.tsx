@@ -21,7 +21,8 @@ import {
   Layers, 
   Clock, 
   FolderGit2,
-  X
+  X,
+  Menu
 } from 'lucide-react';
 
 interface NavbarProps {
@@ -29,6 +30,7 @@ interface NavbarProps {
   onOpenTimeTracking: () => void;
   onOpenDashboard: () => void;
   onOpenWorkspaces: () => void;
+  onMenuToggle?: () => void;
 }
 
 export const Navbar: React.FC<NavbarProps> = ({
@@ -36,6 +38,7 @@ export const Navbar: React.FC<NavbarProps> = ({
   onOpenTimeTracking,
   onOpenDashboard,
   onOpenWorkspaces,
+  onMenuToggle,
 }) => {
   const { user, logout } = useAuth();
   const { 
@@ -144,9 +147,17 @@ export const Navbar: React.FC<NavbarProps> = ({
   }, [searchQuery]);
 
   return (
-    <header className="h-14 border-b border-[#1E293B] bg-[#0B1120]/95 backdrop-blur-md sticky top-0 z-30 px-4 lg:px-6 flex items-center justify-between gap-4">
+    <header className="h-14 border-b border-[#1E293B] bg-[#0B1120]/95 backdrop-blur-md sticky top-0 z-30 md:z-[60] px-4 lg:px-6 flex items-center justify-between gap-4">
       {/* Left: Brand + Workspace Switcher */}
       <div className="flex items-center gap-4 lg:gap-6">
+        {onMenuToggle && (
+          <button 
+            onClick={onMenuToggle}
+            className="md:hidden p-1 -ml-1 text-slate-300 hover:text-white hover:bg-[#1E293B] rounded transition-colors"
+          >
+            <Menu className="w-5 h-5" />
+          </button>
+        )}
         <button 
           onClick={onOpenDashboard}
           className="flex items-center gap-2.5 group text-left focus:outline-none hover:opacity-95 transition-opacity"
@@ -178,7 +189,7 @@ export const Navbar: React.FC<NavbarProps> = ({
           </button>
 
           {isWorkspaceDropdownOpen && (
-            <div className="absolute left-0 mt-1.5 w-72 rounded-lg bg-[#0F172A] border border-[#1E293B] shadow-2xl shadow-black/80 py-1.5 z-50 animate-in fade-in slide-in-from-top-1 duration-100 font-mono">
+            <div className="fixed left-4 right-4 top-16 sm:absolute sm:left-0 sm:right-auto sm:top-[calc(100%+0.375rem)] sm:mt-0 w-auto sm:w-72 rounded-lg bg-[#0F172A] border border-[#1E293B] shadow-2xl shadow-black/80 py-1.5 z-50 animate-in fade-in slide-in-from-top-1 duration-100 font-mono">
               <div className="px-3 py-1.5 text-[10px] font-bold text-slate-400 uppercase tracking-wider flex items-center justify-between border-b border-[#1E293B]">
                 <span>Espaces de travail ({workspaces.length})</span>
                 <button
@@ -233,7 +244,7 @@ export const Navbar: React.FC<NavbarProps> = ({
                   className="w-full flex items-center gap-1.5 px-2 py-1.5 rounded text-xs font-mono text-[#60A5FA] hover:bg-[#2563EB]/15 transition-colors"
                 >
                   <Plus className="w-3.5 h-3.5" />
-                  <span>+ Nouvel espace</span>
+                  <span>Nouvel espace</span>
                 </button>
               </div>
             </div>
@@ -332,7 +343,7 @@ export const Navbar: React.FC<NavbarProps> = ({
           </button>
 
           {isUserDropdownOpen && (
-            <div className="absolute right-0 mt-1.5 w-72 rounded-lg bg-[#0F172A] border border-[#1E293B] shadow-2xl shadow-black/80 py-2 z-50 animate-in fade-in slide-in-from-top-1 duration-100 font-mono">
+            <div className="fixed left-4 right-4 top-16 sm:absolute sm:right-0 sm:left-auto sm:top-[calc(100%+0.375rem)] sm:mt-0 w-auto sm:w-72 rounded-lg bg-[#0F172A] border border-[#1E293B] shadow-2xl shadow-black/80 py-2 z-50 animate-in fade-in slide-in-from-top-1 duration-100 font-mono">
               {/* User Header */}
               <div className="px-4 py-2.5 border-b border-[#1E293B]">
                 <div className="flex items-center gap-3">

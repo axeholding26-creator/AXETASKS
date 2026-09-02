@@ -558,7 +558,7 @@ export const TaskDetailDrawer: React.FC = () => {
                         type="submit"
                         className="px-2.5 py-1 bg-[#1E293B] hover:bg-[#334155] text-[#60A5FA] border border-[#1E293B] font-bold text-xs rounded transition-colors"
                       >
-                        + Ajouter
+                        Ajouter
                       </button>
                     </form>
                   </div>
@@ -701,7 +701,7 @@ export const TaskDetailDrawer: React.FC = () => {
                         className="w-full py-1.5 border border-dashed border-[#1E293B] rounded text-xs font-semibold text-[#60A5FA] hover:bg-[#0F172A] transition-colors flex items-center justify-center gap-1.5"
                       >
                         <Plus className="w-3.5 h-3.5" />
-                        <span>+ Attacher un lien / fichier</span>
+                        <span>Attacher un lien / fichier</span>
                       </button>
                     )}
                   </div>

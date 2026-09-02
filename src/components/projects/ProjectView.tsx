@@ -262,7 +262,7 @@ export const ProjectView: React.FC<ProjectViewProps> = ({ onBackToWorkspace }) =
             className="flex items-center gap-1.5 px-3 py-1.5 rounded bg-[#2563EB] hover:bg-[#1D4ED8] text-white font-bold text-xs shadow-sm shadow-blue-500/25 active:scale-95 transition-all"
           >
             <Plus className="w-3.5 h-3.5 stroke-[2.5]" />
-            <span>+ Tâche</span>
+            <span>Tâche</span>
           </button>
         </div>
       </div>

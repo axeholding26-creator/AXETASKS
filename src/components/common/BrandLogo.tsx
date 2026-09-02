@@ -38,7 +38,7 @@ export const BrandLogo: React.FC<BrandLogoProps> = ({
       </div>
 
       {withText && (
-        <div className="flex flex-col justify-center">
+        <div className="hidden sm:flex flex-col justify-center">
           <div className={`font-mono font-black tracking-tight flex items-center leading-none ${text}`}>
             <span className="text-white">Axe</span>
             <span className="text-[#2563EB]">Task</span>

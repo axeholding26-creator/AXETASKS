@@ -28,6 +28,7 @@ function MainAppLayout() {
   const { user, loading } = useAuth();
   const { currentWorkspace, currentProject, setCurrentProjectId } = useWorkspace();
   const [currentView, setCurrentView] = useState<NavigationTab>('dashboard');
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
 
   // Auto route if project is selected
   useEffect(() => {
@@ -57,6 +58,7 @@ function MainAppLayout() {
         onOpenTimeTracking={() => setCurrentView('time_tracking')}
         onOpenDashboard={() => setCurrentView('dashboard')}
         onOpenWorkspaces={() => setCurrentView('workspaces')}
+        onMenuToggle={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
       />
 
       {/* Main Workspace Layout */}
@@ -64,7 +66,12 @@ function MainAppLayout() {
         {/* Left Sidebar */}
         <Sidebar
           currentView={currentView}
-          onNavigate={(view) => setCurrentView(view)}
+          onNavigate={(view) => {
+            setCurrentView(view);
+            setIsMobileMenuOpen(false); // Close menu on navigate on mobile
+          }}
+          isOpen={isMobileMenuOpen}
+          onClose={() => setIsMobileMenuOpen(false)}
         />
 
         {/* Content Area */}

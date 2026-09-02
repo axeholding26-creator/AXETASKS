@@ -437,7 +437,7 @@ export const SettingsView: React.FC = () => {
                     type="submit"
                     className="px-4 py-1.5 rounded bg-[#2563EB] hover:bg-[#1D4ED8] text-white font-bold text-xs shadow-sm shadow-blue-500/25 transition-all whitespace-nowrap"
                   >
-                    + Créer
+                    Créer
                   </button>
                 </div>
               </div>
@@ -583,7 +583,7 @@ export const SettingsView: React.FC = () => {
                   type="submit"
                   className="px-4 py-1.5 rounded bg-[#2563EB] hover:bg-[#1D4ED8] text-white font-bold text-xs shadow-sm shadow-blue-500/25 transition-all whitespace-nowrap"
                 >
-                  + Ajouter à l'espace
+                  Ajouter à l'espace
                 </button>
               </form>
 
@@ -699,7 +699,7 @@ export const SettingsView: React.FC = () => {
                 type="submit"
                 className="px-4 py-1.5 rounded bg-[#2563EB] hover:bg-[#1D4ED8] text-white font-bold text-xs shadow-sm shadow-blue-500/25 transition-colors whitespace-nowrap"
               >
-                + Créer le tag
+                Créer le tag
               </button>
             </form>
           </div>

@@ -2,6 +2,7 @@ import 'dotenv/config';
 import express, { Request, Response, NextFunction } from 'express';
 import path from 'path';
 import crypto from 'crypto';
+import cors from 'cors';
 import { createServer as createViteServer } from 'vite';
 import * as db from './src/db/queries.ts';
 import { db as localDb } from './server/db.ts';
@@ -80,6 +81,24 @@ async function startServer() {
   const PORT = 3000;
 
   app.use(express.json({ limit: '15mb' }));
+
+  // --- CORS ---
+  const allowedOrigins = [
+    'http://localhost:3000',
+    'http://localhost:5173',
+    'https://unanimatedly-canorous-arya.ngrok-free.dev',
+    process.env.APP_URL,
+  ].filter(Boolean);
+
+  app.use(cors({
+    origin: (origin, callback) => {
+      // Allow requests with no origin (mobile apps, curl, etc.)
+      if (!origin) return callback(null, true);
+      if (allowedOrigins.includes(origin)) return callback(null, true);
+      callback(new Error(`CORS policy: origin '${origin}' not allowed.`));
+    },
+    credentials: true,
+  }));
 
   // --- API Routes ---
 
@@ -806,7 +825,7 @@ async function startServer() {
   }
 
   app.listen(PORT, '0.0.0.0', () => {
-    console.log(`Axe Task Server running at http://0.0.0.0:${PORT}`);
+    console.log(`Axe Task Server running at http://127.0.0.1:${PORT}`);
   });
 }
 

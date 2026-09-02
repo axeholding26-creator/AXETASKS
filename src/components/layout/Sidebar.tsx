@@ -20,9 +20,11 @@ import {
 interface SidebarProps {
   currentView: 'dashboard' | 'workspaces' | 'workspace_detail' | 'project_detail' | 'time_tracking' | 'settings';
   onNavigate: (view: 'dashboard' | 'workspaces' | 'workspace_detail' | 'project_detail' | 'time_tracking' | 'settings') => void;
+  isOpen: boolean;
+  onClose: () => void;
 }
 
-export const Sidebar: React.FC<SidebarProps> = ({ currentView, onNavigate }) => {
+export const Sidebar: React.FC<SidebarProps> = ({ currentView, onNavigate, isOpen, onClose }) => {
   const { 
     workspaces, 
     currentWorkspace, 
@@ -51,7 +53,21 @@ export const Sidebar: React.FC<SidebarProps> = ({ currentView, onNavigate }) => 
   }, [currentWorkspace?.id]);
 
   return (
-    <aside className="w-60 border-r border-[#1E293B] bg-[#0B1120] flex flex-col shrink-0 h-[calc(100vh-3.5rem)] select-none font-mono">
+    <>
+      {/* Mobile Backdrop */}
+      {isOpen && (
+        <div 
+          className="fixed inset-0 bg-black/50 backdrop-blur-sm z-40 md:hidden"
+          onClick={onClose}
+        />
+      )}
+
+      {/* Sidebar Content */}
+      <aside 
+        className={`fixed inset-y-0 left-0 z-50 md:static md:translate-x-0 w-60 border-r border-[#1E293B] bg-[#0B1120] flex flex-col shrink-0 h-screen md:h-[calc(100vh-3.5rem)] top-0 md:top-auto select-none font-mono transition-transform duration-300 ease-in-out ${
+          isOpen ? 'translate-x-0' : '-translate-x-full'
+        }`}
+      >
       {/* Top Core Navigation Links */}
       <div className="p-2 space-y-0.5">
         <button
@@ -199,5 +215,6 @@ export const Sidebar: React.FC<SidebarProps> = ({ currentView, onNavigate }) => 
         </button>
       </div>
     </aside>
+    </>
   );
 };

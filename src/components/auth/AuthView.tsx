@@ -42,17 +42,17 @@ export const AuthView: React.FC = () => {
 
   return (
     <div className="min-h-screen bg-[#090D16] flex items-center justify-center p-4 relative overflow-hidden font-mono selection:bg-[#2563EB]/30 selection:text-[#93C5FD]">
-      <div className="w-full max-w-md relative z-10 space-y-5">
+      <div className="w-full max-w-sm relative z-10 space-y-4">
         {/* Brand Logo & Presentation */}
-        <div className="text-center space-y-2 flex flex-col items-center">
-          <BrandLogo size="lg" withText={true} className="justify-center" />
-          <p className="text-xs text-slate-400 max-w-xs mx-auto">
-            Plateforme de productivité & gestion multi-ventures pour équipes agiles.
+        <div className="text-center space-y-1.5 flex flex-col items-center">
+          <BrandLogo size="md" withText={true} className="justify-center" />
+          <p className="text-xs text-slate-400 max-w-xs mx-auto leading-relaxed">
+            Plateforme de productivité &amp; gestion multi-ventures pour équipes agiles.
           </p>
         </div>
 
         {/* Auth Card */}
-        <div className="p-6 rounded bg-[#0F172A] border border-[#1E293B] shadow-2xl shadow-black/80 space-y-5">
+        <div className="p-5 rounded bg-[#0F172A] border border-[#1E293B] shadow-2xl shadow-black/80 space-y-4">
           {/* Mode Switcher */}
           <div className="grid grid-cols-2 gap-1 p-1 bg-[#090D16] rounded border border-[#1E293B]">
             <button
@@ -88,7 +88,7 @@ export const AuthView: React.FC = () => {
           )}
 
           {/* Form */}
-          <form onSubmit={handleSubmit} className="space-y-3.5">
+          <form onSubmit={handleSubmit} className="space-y-3">
             {!isLogin && (
               <div>
                 <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">
@@ -102,7 +102,7 @@ export const AuthView: React.FC = () => {
                     placeholder="Alexandre Martin"
                     value={name}
                     onChange={e => setName(e.target.value)}
-                    className="w-full pl-8 pr-3 py-2 rounded bg-[#090D16] border border-[#1E293B] text-xs font-semibold text-slate-200 placeholder-slate-500 focus:outline-none focus:border-[#2563EB]/60"
+                    className="w-full pl-8 pr-3 py-2.5 rounded bg-[#090D16] border border-[#1E293B] text-xs font-semibold text-slate-200 placeholder-slate-500 focus:outline-none focus:border-[#2563EB]/60"
                   />
                 </div>
               </div>
@@ -120,17 +120,15 @@ export const AuthView: React.FC = () => {
                   placeholder="votre.email@axetask.com"
                   value={email}
                   onChange={e => setEmail(e.target.value)}
-                  className="w-full pl-8 pr-3 py-2 rounded bg-[#090D16] border border-[#1E293B] text-xs font-semibold text-slate-200 placeholder-slate-500 focus:outline-none focus:border-[#2563EB]/60"
+                  className="w-full pl-8 pr-3 py-2.5 rounded bg-[#090D16] border border-[#1E293B] text-xs font-semibold text-slate-200 placeholder-slate-500 focus:outline-none focus:border-[#2563EB]/60"
                 />
               </div>
             </div>
 
             <div>
-              <div className="flex items-center justify-between mb-1">
-                <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider">
-                  Mot de passe
-                </label>
-              </div>
+              <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">
+                Mot de passe
+              </label>
               <div className="relative">
                 <Lock className="w-3.5 h-3.5 text-slate-500 absolute left-3 top-1/2 -translate-y-1/2" />
                 <input
@@ -139,7 +137,7 @@ export const AuthView: React.FC = () => {
                   placeholder="••••••••"
                   value={password}
                   onChange={e => setPassword(e.target.value)}
-                  className="w-full pl-8 pr-9 py-2 rounded bg-[#090D16] border border-[#1E293B] text-xs font-semibold text-slate-200 placeholder-slate-500 focus:outline-none focus:border-[#2563EB]/60"
+                  className="w-full pl-8 pr-9 py-2.5 rounded bg-[#090D16] border border-[#1E293B] text-xs font-semibold text-slate-200 placeholder-slate-500 focus:outline-none focus:border-[#2563EB]/60"
                 />
                 <button
                   type="button"
@@ -154,7 +152,7 @@ export const AuthView: React.FC = () => {
             <button
               type="submit"
               disabled={loading}
-              className="w-full py-2.5 rounded bg-[#2563EB] hover:bg-[#1D4ED8] text-white font-bold text-xs shadow-sm shadow-blue-500/25 transition-all flex items-center justify-center gap-2"
+              className="w-full py-2.5 rounded bg-[#2563EB] hover:bg-[#1D4ED8] text-white font-bold text-xs shadow-sm shadow-blue-500/25 transition-all flex items-center justify-center gap-2 active:scale-95"
             >
               <span>{loading ? 'Connexion en cours...' : isLogin ? 'Se connecter' : 'Créer mon compte'}</span>
               <ArrowRight className="w-4 h-4" />
@@ -162,21 +160,19 @@ export const AuthView: React.FC = () => {
           </form>
         </div>
 
-        {/* Feature Highlights Pills */}
-        <div className="flex items-center justify-center gap-4 text-[10px] text-slate-500 font-medium">
+        {/* Feature Highlights Pills — stacked on mobile */}
+        <div className="flex flex-wrap items-center justify-center gap-x-3 gap-y-1.5 text-[10px] text-slate-500 font-medium px-2">
           <span className="flex items-center gap-1">
             <CheckCircle2 className="w-3 h-3 text-[#3B82F6]" />
             Contrôle d'accès RBAC
           </span>
-          <span>•</span>
           <span className="flex items-center gap-1">
             <CheckCircle2 className="w-3 h-3 text-[#3B82F6]" />
             PostgreSQL Cloud SQL
           </span>
-          <span>•</span>
           <span className="flex items-center gap-1">
             <CheckCircle2 className="w-3 h-3 text-[#3B82F6]" />
-            Gestion des Profils Admin
+            Gestion Admin
           </span>
         </div>
       </div>
