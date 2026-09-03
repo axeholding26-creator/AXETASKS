@@ -496,8 +496,8 @@ export const Navbar: React.FC<NavbarProps> = ({
 
       {/* Stop Timer Modal */}
       {isTimerLogModalOpen && activeTimer && (
-        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-[100] flex items-center justify-center p-4">
-          <div className="bg-[#0F172A] border border-[#1E293B] rounded-lg w-full max-w-md p-5 shadow-2xl font-mono">
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-[100] flex items-center justify-center p-4 overflow-y-auto">
+          <div className="bg-[#0F172A] border border-[#1E293B] rounded-lg w-full max-w-md p-5 shadow-2xl font-mono max-h-[calc(100dvh-2rem)] overflow-y-auto my-auto">
             <h3 className="text-sm font-bold text-slate-100 mb-1">
               Enregistrer le temps passé
             </h3>

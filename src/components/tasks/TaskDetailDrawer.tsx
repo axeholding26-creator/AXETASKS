@@ -275,9 +275,9 @@ export const TaskDetailDrawer: React.FC = () => {
   const subtasksProgress = totalSubtasks > 0 ? Math.round((completedSubtasks / totalSubtasks) * 100) : 0;
 
   return (
-    <div className="fixed inset-0 z-[100] overflow-hidden bg-black/80 backdrop-blur-sm flex justify-end animate-in fade-in duration-150 font-mono">
+    <div className="fixed inset-0 z-[100] overflow-y-auto bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in duration-150 font-mono">
       <ConfirmDialog {...confirmProps} />
-      <div className="w-full max-w-2xl bg-[#090D16] border-l border-[#1E293B] h-full flex flex-col shadow-2xl animate-in slide-in-from-right duration-200">
+      <div className="w-full max-w-2xl bg-[#090D16] border border-[#1E293B] rounded-lg max-h-[calc(100dvh-2rem)] my-auto flex flex-col shadow-2xl animate-in zoom-in-95 duration-200">
         {/* Header */}
         <div className="p-3.5 border-b border-[#1E293B] bg-[#0B1120] flex items-center gap-3">
           <button
@@ -761,7 +761,7 @@ export const TaskDetailDrawer: React.FC = () => {
                         onClick={() => setIsLoggingTime(!isLoggingTime)}
                         className="px-2.5 py-1 rounded bg-[#2563EB] hover:bg-[#1D4ED8] text-white font-bold text-xs transition-colors shadow-sm shadow-blue-500/25"
                       >
-                        + Logguer du temps
+                        + Enregistrer du temps
                       </button>
                     </div>
 
