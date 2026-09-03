@@ -1,10 +1,12 @@
-// Vercel serverless entrypoint: wraps the shared Express app from
-// src/server/app.ts. Vercel routes every /api/* request here (see
-// vercel.json rewrites). This file must stay free of app.listen()/Vite —
-// those belong to server.ts, the local dev/traditional-host entrypoint.
+// Vercel serverless function source. This is bundled with esbuild into a
+// single self-contained api/index.js file at build time (see the
+// "vercel-build" script in package.json) — Vercel's own per-file TypeScript
+// compilation does not resolve cross-directory relative imports at runtime,
+// so we pre-bundle instead of letting api/index.ts import sibling .ts files
+// directly.
 import type { Request, Response } from 'express';
-import { createApp } from '../src/server/app.ts';
-import { ensureAdminUser } from '../src/db/queries.ts';
+import { createApp } from './app.ts';
+import { ensureAdminUser } from '../db/queries.ts';
 
 let app: ReturnType<typeof createApp> | null = null;
 let initError: Error | null = null;
