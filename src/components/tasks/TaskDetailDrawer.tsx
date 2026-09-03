@@ -326,8 +326,11 @@ export const TaskDetailDrawer: React.FC = () => {
           </div>
         </div>
 
-        {/* Content Body */}
-        <div className="flex-1 overflow-y-auto p-5 space-y-5">
+        {/* Content Body — min-w-0 so this flex-column child can actually
+            shrink to the drawer's width instead of growing to fit its
+            widest descendant (the tabs row below), which otherwise pushed
+            the whole drawer into horizontal overflow on narrow screens. */}
+        <div className="flex-1 min-w-0 overflow-y-auto p-5 space-y-5">
           {loading ? (
             <div className="text-center py-20 text-xs text-slate-400">
               Synchronisation des données de la tâche...
@@ -445,7 +448,7 @@ export const TaskDetailDrawer: React.FC = () => {
                           key={tag.id}
                           type="button"
                           onClick={() => handleToggleTag(tag.id)}
-                          className={`text-xs px-2 py-0.5 rounded font-medium transition-all flex items-center gap-1.5 ${
+                          className={`max-w-[200px] text-xs px-2 py-0.5 rounded font-medium transition-all flex items-center gap-1.5 ${
                             isSelected
                               ? 'ring-1 ring-[#2563EB] shadow-sm'
                               : 'opacity-50 hover:opacity-100'
@@ -456,8 +459,8 @@ export const TaskDetailDrawer: React.FC = () => {
                             border: `1px solid ${tag.color}45`,
                           }}
                         >
-                          <span>{tag.name}</span>
-                          {isSelected && <Check className="w-3 h-3" />}
+                          <span className="truncate">{tag.name}</span>
+                          {isSelected && <Check className="w-3 h-3 shrink-0" />}
                         </button>
                       );
                     })}
@@ -485,50 +488,54 @@ export const TaskDetailDrawer: React.FC = () => {
                 <div className="flex items-center gap-1.5 border-b border-[#1E293B] pb-2 overflow-x-auto">
                   <button
                     onClick={() => setActiveTab('subtasks')}
-                    className={`flex items-center gap-1.5 px-2.5 py-1 rounded text-xs font-bold transition-colors ${
+                    className={`flex items-center gap-1.5 px-2 sm:px-2.5 py-1 rounded text-xs font-bold transition-colors shrink-0 ${
                       activeTab === 'subtasks'
                         ? 'bg-[#2563EB]/15 text-[#60A5FA] border border-[#2563EB]/40'
                         : 'text-slate-400 hover:text-slate-200'
                     }`}
                   >
                     <CheckSquare className="w-3.5 h-3.5" />
-                    <span>Sous-tâches ({task.subtasks?.length || 0})</span>
+                    <span className="hidden sm:inline">Sous-tâches </span>
+                    <span>({task.subtasks?.length || 0})</span>
                   </button>
 
                   <button
                     onClick={() => setActiveTab('comments')}
-                    className={`flex items-center gap-1.5 px-2.5 py-1 rounded text-xs font-bold transition-colors ${
+                    className={`flex items-center gap-1.5 px-2 sm:px-2.5 py-1 rounded text-xs font-bold transition-colors shrink-0 ${
                       activeTab === 'comments'
                         ? 'bg-[#2563EB]/15 text-[#60A5FA] border border-[#2563EB]/40'
                         : 'text-slate-400 hover:text-slate-200'
                     }`}
                   >
                     <MessageSquare className="w-3.5 h-3.5" />
-                    <span>Commentaires ({task.comments?.length || 0})</span>
+                    <span className="hidden sm:inline">Commentaires </span>
+                    <span>({task.comments?.length || 0})</span>
                   </button>
 
                   <button
                     onClick={() => setActiveTab('attachments')}
-                    className={`flex items-center gap-1.5 px-2.5 py-1 rounded text-xs font-bold transition-colors ${
+                    className={`flex items-center gap-1.5 px-2 sm:px-2.5 py-1 rounded text-xs font-bold transition-colors shrink-0 ${
                       activeTab === 'attachments'
                         ? 'bg-[#2563EB]/15 text-[#60A5FA] border border-[#2563EB]/40'
                         : 'text-slate-400 hover:text-slate-200'
                     }`}
                   >
                     <Paperclip className="w-3.5 h-3.5" />
-                    <span>Fichiers ({task.attachments?.length || 0})</span>
+                    <span className="hidden sm:inline">Fichiers </span>
+                    <span>({task.attachments?.length || 0})</span>
                   </button>
 
                   <button
                     onClick={() => setActiveTab('time')}
-                    className={`flex items-center gap-1.5 px-2.5 py-1 rounded text-xs font-bold transition-colors ${
+                    className={`flex items-center gap-1.5 px-2 sm:px-2.5 py-1 rounded text-xs font-bold transition-colors shrink-0 ${
                       activeTab === 'time'
                         ? 'bg-[#2563EB]/15 text-[#60A5FA] border border-[#2563EB]/40'
                         : 'text-slate-400 hover:text-slate-200'
                     }`}
                   >
                     <Clock className="w-3.5 h-3.5" />
-                    <span>Temps ({task.total_time_minutes ? `${Math.floor(task.total_time_minutes / 60)}h ${task.total_time_minutes % 60}m` : '0m'})</span>
+                    <span className="hidden sm:inline">Temps </span>
+                    <span>({task.total_time_minutes ? `${Math.floor(task.total_time_minutes / 60)}h ${task.total_time_minutes % 60}m` : '0m'})</span>
                   </button>
                 </div>
 

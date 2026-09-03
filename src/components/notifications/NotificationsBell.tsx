@@ -31,6 +31,25 @@ const TYPE_META: Record<AppNotification['type'], { icon: React.ReactNode; color:
   workspace_role_changed: { icon: <ShieldCheck className="w-3.5 h-3.5" />, color: 'text-[#60A5FA]' },
 };
 
+const ANNOUNCED_IDS_KEY = 'axetask_announced_notification_ids';
+
+function loadAnnouncedIds(): Set<string> {
+  try {
+    const raw = localStorage.getItem(ANNOUNCED_IDS_KEY);
+    return raw ? new Set(JSON.parse(raw)) : new Set();
+  } catch {
+    return new Set();
+  }
+}
+
+function saveAnnouncedIds(ids: Set<string>) {
+  try {
+    localStorage.setItem(ANNOUNCED_IDS_KEY, JSON.stringify([...ids]));
+  } catch {
+    // storage full/unavailable — dedup just won't survive a reload this time
+  }
+}
+
 function formatRelativeTime(iso: string): string {
   const diffMs = Date.now() - new Date(iso).getTime();
   const mins = Math.floor(diffMs / 60000);
@@ -55,10 +74,12 @@ export const NotificationsBell: React.FC<NotificationsBellProps> = ({ onOpenWork
   const [unreadCount, setUnreadCount] = useState(0);
   const [loading, setLoading] = useState(true);
   const dropdownRef = useRef<HTMLDivElement>(null);
-  // null until the first poll resolves — distinguishes "nothing seen yet" (no
-  // device alerts, would otherwise fire one per notification on every login)
-  // from "these are genuinely new since last poll".
-  const seenIdsRef = useRef<Set<string> | null>(null);
+  // Persisted to localStorage (not just a component ref) so an id, once
+  // announced, never sounds/pops again even across a page reload, a closed
+  // tab reopened later, or a fresh mount — "only once, ever" per notification,
+  // not "only once per browser session".
+  const announcedIdsRef = useRef<Set<string>>(loadAnnouncedIds());
+  const isFirstPollRef = useRef(true);
 
   // Polls the full list (not just the count) so a new arrival can be
   // announced with its actual title/body, both as a device-level
@@ -70,8 +91,10 @@ export const NotificationsBell: React.FC<NotificationsBellProps> = ({ onOpenWork
       const list = await api.getNotifications();
       const unread = list.filter(n => !n.is_read);
 
-      if (seenIdsRef.current) {
-        const newOnes = unread.filter(n => !seenIdsRef.current!.has(n.id));
+      // Skip announcing on the very first poll of this mount — otherwise
+      // every login/reload would re-announce whatever was already unread.
+      if (!isFirstPollRef.current) {
+        const newOnes = unread.filter(n => !announcedIdsRef.current.has(n.id));
         if (newOnes.length > 0) {
           playNotificationSound();
 
@@ -101,7 +124,14 @@ export const NotificationsBell: React.FC<NotificationsBellProps> = ({ onOpenWork
           }
         }
       }
-      seenIdsRef.current = new Set(list.map(n => n.id));
+      isFirstPollRef.current = false;
+
+      // Mark everything currently fetched as announced (read or not), so
+      // none of it can trigger a sound/popup again later. Ids that have
+      // aged out of the list (server caps it at 50) are naturally dropped
+      // here too, keeping this from growing unbounded.
+      announcedIdsRef.current = new Set(list.map(n => n.id));
+      saveAnnouncedIds(announcedIdsRef.current);
 
       setNotifications(list);
       setUnreadCount(unread.length);
@@ -154,7 +184,8 @@ export const NotificationsBell: React.FC<NotificationsBellProps> = ({ onOpenWork
       await api.clearAllNotifications();
       setNotifications([]);
       setUnreadCount(0);
-      seenIdsRef.current = new Set();
+      announcedIdsRef.current = new Set();
+      saveAnnouncedIds(announcedIdsRef.current);
     } catch (err) {
       console.error(err);
     }

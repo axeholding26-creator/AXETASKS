@@ -276,39 +276,40 @@ export const ProjectView: React.FC<ProjectViewProps> = ({ onBackToWorkspace }) =
               <span className="hidden sm:inline">Modifier</span>
             </button>
           )}
-          {/* View Mode Toggle */}
+          {/* View Mode Toggle — icon-only below `sm`, matching the navbar's
+              own task button so this row never outgrows a 320px viewport. */}
           <div className="p-0.5 rounded bg-[#0F172A] border border-[#1E293B] flex items-center gap-0.5">
             <button
               onClick={() => setViewMode('kanban')}
-              className={`flex items-center gap-1.5 px-2.5 py-1 rounded text-xs font-bold transition-colors ${
+              className={`flex items-center gap-1.5 px-2 sm:px-2.5 py-1 rounded text-xs font-bold transition-colors ${
                 viewMode === 'kanban'
                   ? 'bg-[#2563EB]/15 text-[#60A5FA] border border-[#2563EB]/40 shadow-sm'
                   : 'text-slate-400 hover:text-slate-200'
               }`}
             >
               <KanbanIcon className="w-3.5 h-3.5" />
-              <span>Kanban</span>
+              <span className="hidden sm:inline">Kanban</span>
             </button>
 
             <button
               onClick={() => setViewMode('list')}
-              className={`flex items-center gap-1.5 px-2.5 py-1 rounded text-xs font-bold transition-colors ${
+              className={`flex items-center gap-1.5 px-2 sm:px-2.5 py-1 rounded text-xs font-bold transition-colors ${
                 viewMode === 'list'
                   ? 'bg-[#2563EB]/15 text-[#60A5FA] border border-[#2563EB]/40 shadow-sm'
                   : 'text-slate-400 hover:text-slate-200'
               }`}
             >
               <List className="w-3.5 h-3.5" />
-              <span>Grille</span>
+              <span className="hidden sm:inline">Grille</span>
             </button>
           </div>
 
           <button
             onClick={() => setIsCreateTaskModalOpen(true)}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded bg-[#2563EB] hover:bg-[#1D4ED8] text-white font-bold text-xs shadow-sm shadow-blue-500/25 active:scale-95 transition-all"
+            className="flex items-center gap-1.5 px-2 sm:px-3 py-1.5 rounded bg-[#2563EB] hover:bg-[#1D4ED8] text-white font-bold text-xs shadow-sm shadow-blue-500/25 active:scale-95 transition-all"
           >
             <Plus className="w-3.5 h-3.5 stroke-[2.5]" />
-            <span>Tâche</span>
+            <span className="hidden sm:inline">Tâche</span>
           </button>
         </div>
       </div>
@@ -332,7 +333,7 @@ export const ProjectView: React.FC<ProjectViewProps> = ({ onBackToWorkspace }) =
           <select
             value={priorityFilter}
             onChange={e => setPriorityFilter(e.target.value)}
-            className="px-2.5 py-1 rounded bg-[#090D16] border border-[#1E293B] text-slate-300 focus:outline-none focus:border-[#2563EB]/60 cursor-pointer"
+            className="max-w-full px-2.5 py-1 rounded bg-[#090D16] border border-[#1E293B] text-slate-300 focus:outline-none focus:border-[#2563EB]/60 cursor-pointer"
           >
             <option value="all">Toutes priorités</option>
             <option value="urgente">Urgente</option>
@@ -345,7 +346,7 @@ export const ProjectView: React.FC<ProjectViewProps> = ({ onBackToWorkspace }) =
           <select
             value={assigneeFilter}
             onChange={e => setAssigneeFilter(e.target.value)}
-            className="px-2.5 py-1 rounded bg-[#090D16] border border-[#1E293B] text-slate-300 focus:outline-none focus:border-[#2563EB]/60 cursor-pointer"
+            className="max-w-full px-2.5 py-1 rounded bg-[#090D16] border border-[#1E293B] text-slate-300 focus:outline-none focus:border-[#2563EB]/60 cursor-pointer"
           >
             <option value="all">Tous les assignés</option>
             <option value="unassigned">Non assigné</option>
@@ -359,7 +360,7 @@ export const ProjectView: React.FC<ProjectViewProps> = ({ onBackToWorkspace }) =
             <select
               value={tagFilter}
               onChange={e => setTagFilter(e.target.value)}
-              className="px-2.5 py-1 rounded bg-[#090D16] border border-[#1E293B] text-slate-300 focus:outline-none focus:border-[#2563EB]/60 cursor-pointer"
+              className="max-w-full px-2.5 py-1 rounded bg-[#090D16] border border-[#1E293B] text-slate-300 focus:outline-none focus:border-[#2563EB]/60 cursor-pointer"
             >
               <option value="all">Tous les tags</option>
               {workspaceTags.map(t => (
@@ -373,7 +374,7 @@ export const ProjectView: React.FC<ProjectViewProps> = ({ onBackToWorkspace }) =
             <select
               value={statusFilter}
               onChange={e => setStatusFilter(e.target.value)}
-              className="px-2.5 py-1 rounded bg-[#090D16] border border-[#1E293B] text-slate-300 focus:outline-none focus:border-[#2563EB]/60 cursor-pointer"
+              className="max-w-full px-2.5 py-1 rounded bg-[#090D16] border border-[#1E293B] text-slate-300 focus:outline-none focus:border-[#2563EB]/60 cursor-pointer"
             >
               <option value="all">Tous statuts</option>
               <option value="a_faire">À faire</option>
@@ -490,7 +491,7 @@ export const ProjectView: React.FC<ProjectViewProps> = ({ onBackToWorkspace }) =
                             {task.tags.map(t => (
                               <span
                                 key={t.id}
-                                className="text-[10px] font-semibold px-1.5 py-0.2 rounded"
+                                className="max-w-[140px] truncate text-[10px] font-semibold px-1.5 py-0.2 rounded"
                                 style={{ backgroundColor: `${t.color}15`, color: t.color, border: `1px solid ${t.color}35` }}
                               >
                                 {t.name}

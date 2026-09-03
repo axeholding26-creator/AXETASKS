@@ -1,6 +1,7 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useWorkspace } from '../../context/WorkspaceContext';
 import { api } from '../../lib/api';
+import { playNotificationSound } from '../../lib/sound';
 import { Project } from '../../types';
 import {
   LayoutDashboard,
@@ -46,12 +47,23 @@ export const Sidebar: React.FC<SidebarProps> = ({ currentView, onNavigate, isOpe
   const [projects, setProjects] = useState<Project[]>([]);
   const [loadingProjects, setLoadingProjects] = useState(false);
   const [isProjectsExpanded, setIsProjectsExpanded] = useState(true);
+  const [isMobileWsExpanded, setIsMobileWsExpanded] = useState(false);
   const [unreadMessages, setUnreadMessages] = useState(0);
+  // null until the first poll resolves, so opening the app with existing
+  // unread messages doesn't itself trigger the arrival sound.
+  const prevUnreadMessagesRef = useRef<number | null>(null);
 
   useEffect(() => {
     const loadUnread = () => {
       api.getConversations()
-        .then(convs => setUnreadMessages(convs.reduce((sum, c) => sum + c.unread_count, 0)))
+        .then(convs => {
+          const total = convs.reduce((sum, c) => sum + c.unread_count, 0);
+          if (prevUnreadMessagesRef.current !== null && total > prevUnreadMessagesRef.current) {
+            playNotificationSound();
+          }
+          prevUnreadMessagesRef.current = total;
+          setUnreadMessages(total);
+        })
         .catch(() => {});
     };
     loadUnread();
@@ -100,6 +112,62 @@ export const Sidebar: React.FC<SidebarProps> = ({ currentView, onNavigate, isOpe
           ${isOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'}
         `}
       >
+        {/* Workspace Switcher — mobile only; on desktop this lives in the
+            Navbar instead, since there's room for it there. */}
+        <div className="p-2 pb-0 shrink-0 md:hidden">
+          <button
+            onClick={() => setIsMobileWsExpanded(!isMobileWsExpanded)}
+            className="w-full flex items-center gap-2 px-2.5 py-1.5 rounded bg-[#0F172A] hover:bg-[#1E293B] border border-[#1E293B] text-slate-200 text-xs font-mono transition-colors"
+          >
+            <div
+              className="w-2.5 h-2.5 rounded-sm shrink-0"
+              style={{ backgroundColor: currentWorkspace?.color || '#2563EB' }}
+            />
+            <span className="flex-1 min-w-0 truncate text-left font-medium text-slate-100">
+              {currentWorkspace?.name || 'Sélectionner un espace'}
+            </span>
+            <ChevronDown className={`w-3 h-3 text-slate-400 shrink-0 transition-transform ${isMobileWsExpanded ? 'rotate-180' : ''}`} />
+          </button>
+
+          {isMobileWsExpanded && (
+            <div className="mt-1 rounded-lg bg-[#0F172A] border border-[#1E293B] overflow-hidden animate-in fade-in slide-in-from-top-1 duration-100">
+              <div className="max-h-48 overflow-y-auto py-1">
+                {workspaces.map(ws => {
+                  const isSelected = currentWorkspace?.id === ws.id;
+                  return (
+                    <button
+                      key={ws.id}
+                      onClick={() => {
+                        setCurrentWorkspaceId(ws.id);
+                        setIsMobileWsExpanded(false);
+                      }}
+                      className={`w-full px-3 py-1.5 text-left text-xs flex items-center justify-between gap-2 transition-colors ${
+                        isSelected ? 'bg-[#2563EB]/15 text-[#60A5FA] font-semibold' : 'text-slate-300 hover:bg-[#1E293B]'
+                      }`}
+                    >
+                      <div className="flex items-center gap-2 min-w-0">
+                        <div className="w-2 h-2 rounded-sm shrink-0" style={{ backgroundColor: ws.color }} />
+                        <span className="truncate">{ws.name}</span>
+                      </div>
+                      {isSelected && <ChevronRight className="w-3.5 h-3.5 shrink-0" />}
+                    </button>
+                  );
+                })}
+              </div>
+              <button
+                onClick={() => {
+                  setIsMobileWsExpanded(false);
+                  setIsCreateWorkspaceModalOpen(true);
+                }}
+                className="w-full flex items-center gap-1.5 px-3 py-1.5 border-t border-[#1E293B] text-xs font-mono text-[#60A5FA] hover:bg-[#2563EB]/15 transition-colors"
+              >
+                <Plus className="w-3.5 h-3.5" />
+                <span>Nouvel espace</span>
+              </button>
+            </div>
+          )}
+        </div>
+
         {/* Top Core Navigation Links — fixed height */}
         <div className="p-2 space-y-0.5 shrink-0">
           <button
@@ -156,14 +224,16 @@ export const Sidebar: React.FC<SidebarProps> = ({ currentView, onNavigate, isOpe
             }`}
           >
             <div className="flex items-center gap-2">
-              <MessageSquare className="w-3.5 h-3.5 text-[#3B82F6]" />
+              <div className="relative shrink-0">
+                <MessageSquare className="w-3.5 h-3.5 text-[#3B82F6]" />
+                {unreadMessages > 0 && (
+                  <span className="absolute -top-1.5 -right-1.5 min-w-[14px] h-3.5 px-0.5 rounded-full bg-[#2563EB] text-white text-[9px] font-bold flex items-center justify-center leading-none">
+                    {unreadMessages > 99 ? '99+' : unreadMessages}
+                  </span>
+                )}
+              </div>
               <span>Messages</span>
             </div>
-            {unreadMessages > 0 && (
-              <span className="text-[10px] font-bold px-1.5 py-0.2 rounded-full bg-[#2563EB] text-white min-w-[16px] text-center">
-                {unreadMessages}
-              </span>
-            )}
           </button>
         </div>
 

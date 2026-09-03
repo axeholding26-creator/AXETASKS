@@ -85,13 +85,14 @@ export const Navbar: React.FC<NavbarProps> = ({
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  // Format stopwatch seconds
+  // Format stopwatch seconds — kept numeric/compact (not "1h 23m 45s") so the
+  // pill it sits in stays as narrow as possible on small screens.
   const formatTimer = (seconds: number) => {
     const hrs = Math.floor(seconds / 3600);
     const mins = Math.floor((seconds % 3600) / 60);
     const secs = seconds % 60;
     if (hrs > 0) {
-      return `${hrs}h ${mins.toString().padStart(2, '0')}m ${secs.toString().padStart(2, '0')}s`;
+      return `${hrs}:${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
     }
     return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
   };
@@ -150,7 +151,7 @@ export const Navbar: React.FC<NavbarProps> = ({
   return (
     <header className="fixed top-0 w-full h-14 border-b border-[#1E293B] bg-[#0B1120]/95 backdrop-blur-md z-30 md:z-[60] px-4 lg:px-6 flex items-center justify-between gap-4">
       {/* Left: Brand + Workspace Switcher */}
-      <div className="flex items-center gap-4 lg:gap-6">
+      <div className="flex items-center gap-2 sm:gap-4 lg:gap-6 shrink-0">
         {onMenuToggle && (
           <button 
             onClick={onMenuToggle}
@@ -168,8 +169,9 @@ export const Navbar: React.FC<NavbarProps> = ({
 
         <div className="h-4 w-px bg-[#1E293B] hidden md:block" />
 
-        {/* Workspace Dropdown */}
-        <div className="relative" ref={wsDropdownRef}>
+        {/* Workspace Dropdown — desktop only; on mobile it lives in the
+            sidebar instead, and this space is used by the search trigger. */}
+        <div className="relative hidden md:block" ref={wsDropdownRef}>
           <button
             onClick={() => setIsWorkspaceDropdownOpen(!isWorkspaceDropdownOpen)}
             className="flex items-center gap-2 px-2.5 py-1 rounded bg-[#0F172A] hover:bg-[#1E293B] border border-[#1E293B] text-slate-200 text-xs font-mono transition-colors"
@@ -253,33 +255,48 @@ export const Navbar: React.FC<NavbarProps> = ({
         </div>
       </div>
 
-      {/* Center: Global Search trigger */}
-      <div className="hidden md:flex items-center max-w-xs w-full">
+      {/* Center: Global Search trigger — fills the space freed up by moving
+          the workspace switcher to the sidebar on mobile; the ⌘K hint is a
+          keyboard-only affordance so it stays desktop-only. */}
+      <div className="flex items-center flex-1 min-w-0 md:flex-none md:max-w-xs">
         <button
           onClick={() => setIsSearchOpen(true)}
-          className="w-full flex items-center justify-between px-3 py-1 rounded bg-[#0F172A] hover:bg-[#1E293B] border border-[#1E293B] text-slate-400 text-xs font-mono transition-colors"
+          className="flex items-center justify-between gap-2 w-full px-2.5 py-1.5 md:px-3 md:py-1 rounded bg-[#0F172A] hover:bg-[#1E293B] border border-[#1E293B] text-slate-400 text-xs font-mono transition-colors"
         >
-          <div className="flex items-center gap-2">
-            <Search className="w-3.5 h-3.5 text-slate-500" />
-            <span className="text-slate-400 text-xs">Rechercher...</span>
+          <div className="flex items-center gap-2 min-w-0">
+            <Search className="w-3.5 h-3.5 text-slate-500 shrink-0" />
+            <span className="text-slate-400 text-xs truncate">Rechercher...</span>
           </div>
-          <kbd className="px-1.5 py-0.5 rounded bg-[#1E293B] text-[10px] text-slate-400 border border-[#334155]">
+          <kbd className="hidden md:inline-flex px-1.5 py-0.5 rounded bg-[#1E293B] text-[10px] text-slate-400 border border-[#334155] shrink-0">
             ⌘K
           </kbd>
         </button>
       </div>
 
-      {/* Right: Active Timer, Add Task, User Switcher */}
-      <div className="flex items-center gap-2.5">
-        {/* Active Timer Pill */}
+      {/* Right: Active Timer, Add Task, User Switcher — shrink-0 so the
+          search area (flex-1) is what gives up space when things are tight,
+          never these action controls. */}
+      <div className="flex items-center gap-1.5 sm:gap-2.5 shrink-0">
+        {/* Active Timer — below `sm` this collapses to a single tappable
+            badge (opens the timer modal, which now also holds pause/resume/
+            cancel) instead of a row of icon buttons; at 320px wide, the full
+            inline pill plus the rest of the navbar's controls genuinely
+            don't fit, and no amount of padding-trimming closes that gap. */}
         {activeTimer && (
-          <div className="flex items-center gap-1.5 px-2.5 py-1 rounded bg-[#0F172A] border border-[#2563EB]/40 text-[#60A5FA] text-xs font-mono shadow-sm">
+          <button
+            onClick={() => setIsTimerLogModalOpen(true)}
+            className="sm:hidden flex items-center gap-1.5 px-2 py-1 rounded bg-[#0F172A] border border-[#2563EB]/40 text-[#60A5FA] text-xs font-mono shadow-sm"
+          >
+            <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${activeTimer.isRunning ? 'bg-[#3B82F6] animate-pulse' : 'bg-slate-500'}`} />
+            <span className="font-bold tabular-nums">{formatTimer(activeTimer.elapsedSeconds)}</span>
+          </button>
+        )}
+        {activeTimer && (
+          <div className="hidden sm:flex items-center gap-1.5 px-2.5 py-1 rounded bg-[#0F172A] border border-[#2563EB]/40 text-[#60A5FA] text-xs font-mono shadow-sm">
             <Clock className={`w-3.5 h-3.5 ${activeTimer.isRunning ? 'animate-pulse text-[#3B82F6]' : 'text-slate-400'}`} />
-            <div className="flex flex-col">
-              <span className="font-bold text-[#60A5FA]">
-                {formatTimer(activeTimer.elapsedSeconds)}
-              </span>
-            </div>
+            <span className="font-bold text-[#60A5FA] tabular-nums">
+              {formatTimer(activeTimer.elapsedSeconds)}
+            </span>
             <div className="flex items-center gap-1 ml-1 border-l border-[#1E293B] pl-1.5">
               {activeTimer.isRunning ? (
                 <button
@@ -322,7 +339,7 @@ export const Navbar: React.FC<NavbarProps> = ({
         {/* Quick New Task Button */}
         <button
           onClick={() => setIsCreateTaskModalOpen(true)}
-          className="flex items-center gap-1 px-3 py-1 rounded bg-[#2563EB] hover:bg-[#1D4ED8] text-white font-bold font-mono text-xs shadow-sm shadow-blue-500/25 active:scale-95 transition-all"
+          className="flex items-center gap-1 px-2 py-1 sm:px-3 rounded bg-[#2563EB] hover:bg-[#1D4ED8] text-white font-bold font-mono text-xs shadow-sm shadow-blue-500/25 active:scale-95 transition-all"
         >
           <Plus className="w-3.5 h-3.5 stroke-[2.5]" />
           <span className="hidden sm:inline">Tâche</span>
@@ -332,7 +349,7 @@ export const Navbar: React.FC<NavbarProps> = ({
         <div className="relative" ref={userDropdownRef}>
           <button
             onClick={() => setIsUserDropdownOpen(!isUserDropdownOpen)}
-            className="flex items-center gap-2 p-1 pl-1.5 pr-2 rounded hover:bg-[#0F172A] border border-transparent hover:border-[#1E293B] transition-colors"
+            className="flex items-center gap-2 p-1 rounded hover:bg-[#0F172A] border border-transparent hover:border-[#1E293B] transition-colors"
           >
             <Avatar user={user} size="sm" />
             <div className="hidden lg:flex flex-col text-left">
@@ -343,7 +360,7 @@ export const Navbar: React.FC<NavbarProps> = ({
                 {user?.role === 'admin' ? 'Super Admin' : 'Membre'}
               </span>
             </div>
-            <ChevronDown className="w-3 h-3 text-slate-400" />
+            <ChevronDown className="hidden sm:block w-3 h-3 text-slate-400" />
           </button>
 
           {isUserDropdownOpen && (
@@ -500,6 +517,40 @@ export const Navbar: React.FC<NavbarProps> = ({
                   <p className="text-[10px] text-slate-500 mt-0.5">
                     (~{Math.max(1, Math.round(activeTimer.elapsedSeconds / 60))} minutes)
                   </p>
+                </div>
+                {/* Pause/resume/discard — the compact mobile timer badge has
+                    no room for these inline, so they live here instead. */}
+                <div className="flex items-center justify-center gap-2 mt-2 sm:hidden">
+                  {activeTimer.isRunning ? (
+                    <button
+                      type="button"
+                      onClick={pauseTimer}
+                      className="flex items-center gap-1.5 px-3 py-1.5 rounded bg-[#1E293B] text-[#60A5FA] text-xs font-bold"
+                    >
+                      <Pause className="w-3.5 h-3.5" />
+                      <span>Pause</span>
+                    </button>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={resumeTimer}
+                      className="flex items-center gap-1.5 px-3 py-1.5 rounded bg-[#1E293B] text-[#60A5FA] text-xs font-bold"
+                    >
+                      <Play className="w-3.5 h-3.5" />
+                      <span>Reprendre</span>
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      discardTimer();
+                      setIsTimerLogModalOpen(false);
+                    }}
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded bg-rose-950/40 text-rose-400 text-xs font-bold"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                    <span>Annuler le chrono</span>
+                  </button>
                 </div>
               </div>
 
