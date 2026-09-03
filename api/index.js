@@ -766,8 +766,8 @@ async function updateWorkspaceMemberById(memberId, role) {
 }
 async function removeWorkspaceMemberById(memberId) {
   try {
-    await db.delete(workspaceMembers).where(eq(workspaceMembers.id, memberId));
-    return true;
+    const [removed] = await db.delete(workspaceMembers).where(eq(workspaceMembers.id, memberId)).returning();
+    return removed ? { user_id: removed.user_id, workspace_id: removed.workspace_id } : null;
   } catch (error) {
     console.error("Failed to remove workspace member by id:", error);
     throw new Error("Database query failed. Please try again later.", { cause: error });
@@ -2041,6 +2041,16 @@ function createApp() {
     try {
       const updated = await updateWorkspaceMemberById(memberId, role || "member");
       if (!updated) return res.status(404).json({ error: "Membre introuvable." });
+      if (updated.user_id !== req.user.id) {
+        const workspace = await getWorkspaceById(updated.workspace_id);
+        createNotification({
+          user_id: updated.user_id,
+          type: "workspace_role_changed",
+          title: "R\xF4le modifi\xE9",
+          message: `${req.user.name} vous a d\xE9fini comme ${updated.role === "admin" ? "administrateur" : "membre"} de "${workspace?.name || ""}".`,
+          workspace_id: updated.workspace_id
+        }).catch((err) => console.error("Failed to create workspace_role_changed notification:", err));
+      }
       res.json(updated);
     } catch (err) {
       res.status(500).json({ error: err.message || "Erreur lors de la modification du r\xF4le de membre." });
@@ -2049,7 +2059,16 @@ function createApp() {
   app2.delete("/api/workspace-members/:id", authMiddleware, async (req, res) => {
     const memberId = req.params.id;
     try {
-      await removeWorkspaceMemberById(memberId);
+      const removed = await removeWorkspaceMemberById(memberId);
+      if (removed && removed.user_id !== req.user.id) {
+        const workspace = await getWorkspaceById(removed.workspace_id);
+        createNotification({
+          user_id: removed.user_id,
+          type: "workspace_removed",
+          title: "Retir\xE9 d'un espace de travail",
+          message: `${req.user.name} vous a retir\xE9 de l'espace "${workspace?.name || ""}".`
+        }).catch((err) => console.error("Failed to create workspace_removed notification:", err));
+      }
       res.json({ success: true });
     } catch (err) {
       res.status(500).json({ error: err.message || "Erreur lors du retrait du membre." });
@@ -2283,6 +2302,29 @@ function createApp() {
           workspace_id: task.workspace_id || void 0
         }).catch((err) => console.error("Failed to create task_assigned notification:", err));
       }
+      const statusChanged = status !== void 0 && status !== task.status;
+      if (statusChanged) {
+        const STATUS_LABELS = {
+          a_faire: "\xC0 faire",
+          en_cours: "En cours",
+          en_revision: "En r\xE9vision",
+          termine: "Termin\xE9",
+          bloque: "Bloqu\xE9"
+        };
+        const recipients = new Set([task.assignee_id, task.created_by].filter(Boolean));
+        recipients.delete(req.user.id);
+        if (assigneeChanged) recipients.delete(assignee_id);
+        for (const recipientId of recipients) {
+          createNotification({
+            user_id: recipientId,
+            type: "task_status_changed",
+            title: "Statut de t\xE2che modifi\xE9",
+            message: `${req.user.name} a chang\xE9 "${updated?.title || task.title}" en "${STATUS_LABELS[status] || status}".`,
+            task_id: task.id,
+            workspace_id: task.workspace_id || void 0
+          }).catch((err) => console.error("Failed to create task_status_changed notification:", err));
+        }
+      }
       res.json(updated);
     } catch (err) {
       res.status(500).json({ error: err.message || "Erreur lors de la mise \xE0 jour de la t\xE2che." });
@@ -2354,6 +2396,18 @@ function createApp() {
       const { content } = req.body;
       if (!content) return res.status(400).json({ error: "Le contenu est requis." });
       const comment = await addComment(req.params.id, req.user.id, content);
+      const commentRecipients = new Set([task.assignee_id, task.created_by].filter(Boolean));
+      commentRecipients.delete(req.user.id);
+      for (const recipientId of commentRecipients) {
+        createNotification({
+          user_id: recipientId,
+          type: "task_comment",
+          title: "Nouveau commentaire",
+          message: `${req.user.name} a comment\xE9 "${task.title}".`,
+          task_id: task.id,
+          workspace_id: task.workspace_id || void 0
+        }).catch((err) => console.error("Failed to create task_comment notification:", err));
+      }
       res.status(201).json(comment);
     } catch (err) {
       res.status(500).json({ error: err.message || "Erreur lors de l ajout du commentaire." });

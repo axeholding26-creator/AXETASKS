@@ -13,13 +13,21 @@ import {
   CalendarClock,
   AlarmClockOff,
   Briefcase,
+  RefreshCw,
+  MessageSquare,
+  UserMinus,
+  ShieldCheck,
 } from 'lucide-react';
 
 const TYPE_META: Record<AppNotification['type'], { icon: React.ReactNode; color: string }> = {
   task_assigned: { icon: <UserPlus className="w-3.5 h-3.5" />, color: 'text-[#60A5FA]' },
+  task_status_changed: { icon: <RefreshCw className="w-3.5 h-3.5" />, color: 'text-indigo-400' },
+  task_comment: { icon: <MessageSquare className="w-3.5 h-3.5" />, color: 'text-[#EC4899]' },
   task_due_today: { icon: <CalendarClock className="w-3.5 h-3.5" />, color: 'text-amber-400' },
   task_overdue: { icon: <AlarmClockOff className="w-3.5 h-3.5" />, color: 'text-rose-400' },
   workspace_added: { icon: <Briefcase className="w-3.5 h-3.5" />, color: 'text-emerald-400' },
+  workspace_removed: { icon: <UserMinus className="w-3.5 h-3.5" />, color: 'text-rose-400' },
+  workspace_role_changed: { icon: <ShieldCheck className="w-3.5 h-3.5" />, color: 'text-[#60A5FA]' },
 };
 
 function formatRelativeTime(iso: string): string {

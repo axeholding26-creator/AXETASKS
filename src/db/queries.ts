@@ -530,11 +530,12 @@ export async function updateWorkspaceMemberById(memberId: string, role: 'admin' 
   }
 }
 
-export async function removeWorkspaceMemberById(memberId: string): Promise<boolean> {
+export async function removeWorkspaceMemberById(memberId: string): Promise<{ user_id: string; workspace_id: string } | null> {
   try {
-    await db.delete(schema.workspaceMembers)
-      .where(eq(schema.workspaceMembers.id, memberId));
-    return true;
+    const [removed] = await db.delete(schema.workspaceMembers)
+      .where(eq(schema.workspaceMembers.id, memberId))
+      .returning();
+    return removed ? { user_id: removed.user_id, workspace_id: removed.workspace_id } : null;
   } catch (error) {
     console.error('Failed to remove workspace member by id:', error);
     throw new Error('Database query failed. Please try again later.', { cause: error });

@@ -165,7 +165,15 @@ export interface DashboardStats {
   total_logged_minutes_week: number;
 }
 
-export type NotificationType = 'task_assigned' | 'task_due_today' | 'task_overdue' | 'workspace_added';
+export type NotificationType =
+  | 'task_assigned'
+  | 'task_status_changed'
+  | 'task_comment'
+  | 'task_due_today'
+  | 'task_overdue'
+  | 'workspace_added'
+  | 'workspace_removed'
+  | 'workspace_role_changed';
 
 export interface AppNotification {
   id: string;
