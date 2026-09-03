@@ -154,7 +154,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ currentView, onNavigate, isOpe
             }`}
           >
             <div className="flex items-center gap-2">
-              <MessageSquare className="w-3.5 h-3.5 text-[#EC4899]" />
+              <MessageSquare className="w-3.5 h-3.5 text-[#3B82F6]" />
               <span>Messages</span>
             </div>
             {unreadMessages > 0 && (
