@@ -43,13 +43,15 @@ interface ProjectViewProps {
 
 export const ProjectView: React.FC<ProjectViewProps> = ({ onBackToWorkspace }) => {
   const { user } = useAuth();
-  const { 
-    currentProject, 
-    currentWorkspace, 
-    setSelectedTaskId, 
+  const {
+    currentProject,
+    currentWorkspace,
+    setSelectedTaskId,
     setIsCreateTaskModalOpen,
     startTimer,
-    activeTimer 
+    activeTimer,
+    taskVersion,
+    bumpTaskVersion
   } = useWorkspace();
 
   const [tasks, setTasks] = useState<Task[]>([]);
@@ -110,7 +112,7 @@ export const ProjectView: React.FC<ProjectViewProps> = ({ onBackToWorkspace }) =
 
   useEffect(() => {
     loadProjectData();
-  }, [currentProject?.id]);
+  }, [currentProject?.id, taskVersion]);
 
   // Handle Drag Start
   const handleDragStart = (e: React.DragEvent, taskId: string) => {
@@ -164,6 +166,7 @@ export const ProjectView: React.FC<ProjectViewProps> = ({ onBackToWorkspace }) =
 
     try {
       await api.updateTask(taskId, { status: targetStatus });
+      bumpTaskVersion();
     } catch (err) {
       console.error('Failed to update task status on drop:', err);
       setTasks(previousTasks); // Revert on failure
@@ -183,6 +186,7 @@ export const ProjectView: React.FC<ProjectViewProps> = ({ onBackToWorkspace }) =
       setTasks(prev => [...prev, newTask]);
       setQuickAddTitle('');
       setQuickAddColumn(null);
+      bumpTaskVersion();
     } catch (err) {
       console.error(err);
     }

@@ -34,11 +34,12 @@ export const WorkspaceView: React.FC<WorkspaceViewProps> = ({
   onBackToWorkspaces,
 }) => {
   const { user } = useAuth();
-  const { 
-    currentWorkspace, 
-    setCurrentProjectId, 
+  const {
+    currentWorkspace,
+    setCurrentProjectId,
     setIsCreateProjectModalOpen,
-    refreshWorkspaces
+    refreshWorkspaces,
+    taskVersion
   } = useWorkspace();
   const { confirmProps, confirm } = useConfirm();
 
@@ -94,7 +95,7 @@ export const WorkspaceView: React.FC<WorkspaceViewProps> = ({
 
   useEffect(() => {
     loadData();
-  }, [currentWorkspace?.id]);
+  }, [currentWorkspace?.id, taskVersion]);
 
   const handleDeleteProject = async (projectId: string, e: React.MouseEvent) => {
     e.stopPropagation();

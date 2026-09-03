@@ -24,7 +24,7 @@ import {
 
 export const GlobalDashboard: React.FC = () => {
   const { user } = useAuth();
-  const { setSelectedTaskId, setIsCreateTaskModalOpen, startTimer, activeTimer } = useWorkspace();
+  const { setSelectedTaskId, setIsCreateTaskModalOpen, startTimer, activeTimer, taskVersion, bumpTaskVersion } = useWorkspace();
   const [tasks, setTasks] = useState<Task[]>([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<'all' | 'today' | 'overdue' | 'in_progress' | 'urgent'>('all');
@@ -44,7 +44,7 @@ export const GlobalDashboard: React.FC = () => {
 
   useEffect(() => {
     loadTasks();
-  }, [user]);
+  }, [user, taskVersion]);
 
   // Calculations
   const todayStr = new Date().toISOString().split('T')[0];
@@ -76,7 +76,7 @@ export const GlobalDashboard: React.FC = () => {
     e.stopPropagation();
     try {
       await api.updateTask(taskId, { status: newStatus });
-      loadTasks();
+      bumpTaskVersion();
     } catch (err) {
       console.error(err);
     }

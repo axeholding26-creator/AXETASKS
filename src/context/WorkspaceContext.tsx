@@ -23,6 +23,7 @@ interface WorkspaceContextType {
   isCreateProjectModalOpen: boolean;
   isCreateWorkspaceModalOpen: boolean;
   activeTimer: ActiveTimer | null;
+  taskVersion: number;
   setCurrentWorkspaceId: (id: string | null) => void;
   setCurrentProjectId: (id: string | null) => void;
   setSelectedTaskId: (id: string | null) => void;
@@ -30,6 +31,7 @@ interface WorkspaceContextType {
   setIsCreateProjectModalOpen: (open: boolean) => void;
   setIsCreateWorkspaceModalOpen: (open: boolean) => void;
   refreshWorkspaces: () => Promise<void>;
+  bumpTaskVersion: () => void;
   startTimer: (task: Task) => void;
   pauseTimer: () => void;
   resumeTimer: () => void;
@@ -45,7 +47,38 @@ export const WorkspaceProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   const [currentWorkspace, setCurrentWorkspace] = useState<Workspace | null>(null);
   const [currentProject, setCurrentProject] = useState<Project | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
-  const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
+  const [selectedTaskId, setSelectedTaskIdState] = useState<string | null>(null);
+  const [taskVersion, setTaskVersion] = useState(0);
+
+  // Opening a task pushes a history entry so the browser/mobile "back"
+  // gesture closes it and returns to whatever was behind it, instead of
+  // navigating away from the app entirely (the drawer is UI state, not a
+  // route, so without this the back button had nothing of ours to undo).
+  const setSelectedTaskId = useCallback((id: string | null) => {
+    if (id) {
+      if (!selectedTaskId) {
+        window.history.pushState({ axetaskTaskDrawer: true }, '');
+      }
+      setSelectedTaskIdState(id);
+    } else {
+      setSelectedTaskIdState(null);
+      if (selectedTaskId && window.history.state?.axetaskTaskDrawer) {
+        window.history.back();
+      }
+    }
+  }, [selectedTaskId]);
+
+  useEffect(() => {
+    const handlePopState = () => {
+      setSelectedTaskIdState(null);
+    };
+    window.addEventListener('popstate', handlePopState);
+    return () => window.removeEventListener('popstate', handlePopState);
+  }, []);
+
+  const bumpTaskVersion = useCallback(() => {
+    setTaskVersion(v => v + 1);
+  }, []);
 
   const [isCreateTaskModalOpen, setIsCreateTaskModalOpen] = useState(false);
   const [isCreateProjectModalOpen, setIsCreateProjectModalOpen] = useState(false);
@@ -116,6 +149,15 @@ export const WorkspaceProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     refreshWorkspaces();
   }, [refreshWorkspaces]);
 
+  // Any task mutation can move an active_tasks_count badge shown in the
+  // navbar/sidebar workspace switcher, so refresh workspaces alongside the
+  // task lists whenever something changes a task.
+  useEffect(() => {
+    if (taskVersion > 0) {
+      refreshWorkspaces();
+    }
+  }, [taskVersion]);
+
   const setCurrentWorkspaceId = (id: string | null) => {
     if (!id) {
       setCurrentWorkspace(null);
@@ -185,6 +227,7 @@ export const WorkspaceProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       await api.logTime(activeTimer.taskId, durationMinutes, note || 'Session chronométrée', new Date().toISOString().split('T')[0]);
       setActiveTimer(null);
       localStorage.removeItem('axetask_active_timer');
+      bumpTaskVersion();
     } catch (err) {
       console.error('Failed to log timer:', err);
       throw err;
@@ -208,6 +251,7 @@ export const WorkspaceProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         isCreateProjectModalOpen,
         isCreateWorkspaceModalOpen,
         activeTimer,
+        taskVersion,
         setCurrentWorkspaceId,
         setCurrentProjectId,
         setSelectedTaskId,
@@ -215,6 +259,7 @@ export const WorkspaceProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         setIsCreateProjectModalOpen,
         setIsCreateWorkspaceModalOpen,
         refreshWorkspaces,
+        bumpTaskVersion,
         startTimer,
         pauseTimer,
         resumeTimer,

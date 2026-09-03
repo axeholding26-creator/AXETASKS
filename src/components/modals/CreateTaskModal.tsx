@@ -10,12 +10,13 @@ import { CalendarPicker } from '../common/CalendarPicker';
 export const CreateTaskModal: React.FC = () => {
   const { user } = useAuth();
   const { notify } = useToast();
-  const { 
-    isCreateTaskModalOpen, 
-    setIsCreateTaskModalOpen, 
-    currentWorkspace, 
+  const {
+    isCreateTaskModalOpen,
+    setIsCreateTaskModalOpen,
+    currentWorkspace,
     currentProject,
-    setSelectedTaskId 
+    setSelectedTaskId,
+    bumpTaskVersion
   } = useWorkspace();
 
   const [title, setTitle] = useState('');
@@ -89,6 +90,7 @@ export const CreateTaskModal: React.FC = () => {
 
       setIsCreateTaskModalOpen(false);
       setSelectedTaskId(newTask.id);
+      bumpTaskVersion();
       notify({
         type: 'success',
         title: 'Tâche créée avec succès',

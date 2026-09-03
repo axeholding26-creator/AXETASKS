@@ -29,12 +29,13 @@ import {
 
 export const TaskDetailDrawer: React.FC = () => {
   const { user } = useAuth();
-  const { 
-    selectedTaskId, 
-    setSelectedTaskId, 
-    startTimer, 
-    activeTimer, 
-    currentWorkspace 
+  const {
+    selectedTaskId,
+    setSelectedTaskId,
+    startTimer,
+    activeTimer,
+    currentWorkspace,
+    bumpTaskVersion
   } = useWorkspace();
   const { confirmProps, confirm } = useConfirm();
 
@@ -105,6 +106,7 @@ export const TaskDetailDrawer: React.FC = () => {
     try {
       const updated = await api.updateTask(task.id, updates);
       setTask(updated);
+      bumpTaskVersion();
     } catch (err) {
       console.error(err);
     }
@@ -118,6 +120,7 @@ export const TaskDetailDrawer: React.FC = () => {
       await api.addSubtask(task.id, newSubtaskTitle.trim());
       setNewSubtaskTitle('');
       loadTask();
+      bumpTaskVersion();
     } catch (err) {
       console.error(err);
     }
@@ -135,6 +138,7 @@ export const TaskDetailDrawer: React.FC = () => {
         });
       }
       loadTask();
+      bumpTaskVersion();
     } catch (err) {
       console.error(err);
     }
@@ -144,6 +148,7 @@ export const TaskDetailDrawer: React.FC = () => {
     try {
       await api.deleteSubtask(subtaskId);
       loadTask();
+      bumpTaskVersion();
     } catch (err) {
       console.error(err);
     }
@@ -157,6 +162,7 @@ export const TaskDetailDrawer: React.FC = () => {
       await api.addComment(task.id, newCommentContent.trim());
       setNewCommentContent('');
       loadTask();
+      bumpTaskVersion();
     } catch (err) {
       console.error(err);
     }
@@ -166,6 +172,7 @@ export const TaskDetailDrawer: React.FC = () => {
     try {
       await api.deleteComment(commentId);
       loadTask();
+      bumpTaskVersion();
     } catch (err) {
       console.error(err);
     }
@@ -186,6 +193,7 @@ export const TaskDetailDrawer: React.FC = () => {
       setNewAttachmentUrl('');
       setIsAddingAttachment(false);
       loadTask();
+      bumpTaskVersion();
     } catch (err) {
       console.error(err);
     }
@@ -195,6 +203,7 @@ export const TaskDetailDrawer: React.FC = () => {
     try {
       await api.deleteAttachment(attachmentId);
       loadTask();
+      bumpTaskVersion();
     } catch (err) {
       console.error(err);
     }
@@ -211,6 +220,7 @@ export const TaskDetailDrawer: React.FC = () => {
       setLogNote('');
       setIsLoggingTime(false);
       loadTask();
+      bumpTaskVersion();
     } catch (err) {
       console.error(err);
     }
@@ -220,6 +230,7 @@ export const TaskDetailDrawer: React.FC = () => {
     try {
       await api.deleteTimeEntry(entryId);
       loadTask();
+      bumpTaskVersion();
     } catch (err) {
       console.error(err);
     }
@@ -249,6 +260,7 @@ export const TaskDetailDrawer: React.FC = () => {
     try {
       await api.deleteTask(task.id);
       setSelectedTaskId(null);
+      bumpTaskVersion();
     } catch (err) {
       console.error(err);
     }
