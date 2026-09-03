@@ -1594,20 +1594,19 @@ async function authMiddleware(req, res, next) {
 function createApp() {
   const app2 = express();
   app2.use(express.json({ limit: "15mb" }));
-  const allowedOrigins = [
+  const extraAllowedOrigins = [
     "http://localhost:3000",
     "http://127.0.0.1:3000",
     "http://localhost:5173",
     "http://127.0.0.1:5173",
     process.env.APP_URL
   ].filter(Boolean);
-  app2.use("/api", cors({
-    origin: (origin, callback) => {
-      if (!origin) return callback(null, true);
-      if (allowedOrigins.includes(origin)) return callback(null, true);
-      callback(new Error(`CORS policy: origin '${origin}' not allowed.`));
-    },
-    credentials: true
+  app2.use("/api", cors((req, callback) => {
+    const origin = req.headers.origin;
+    const host = req.headers.host;
+    const sameOrigin = !!origin && !!host && (origin === `http://${host}` || origin === `https://${host}`);
+    const allowed = !origin || sameOrigin || extraAllowedOrigins.includes(origin);
+    callback(null, { origin: allowed, credentials: true });
   }));
   app2.get("/api/health", (req, res) => {
     res.json({ status: "ok", database: "postgres", time: (/* @__PURE__ */ new Date()).toISOString() });

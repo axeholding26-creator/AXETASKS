@@ -104,7 +104,19 @@ export function createApp() {
   app.use(express.json({ limit: '15mb' }));
 
   // --- CORS ---
-  const allowedOrigins = [
+  // The frontend and API are always same-origin in this app (one deployment,
+  // relative /api/... fetches) — the only origin that legitimately needs to
+  // be allowed is whatever host the request itself came in on. A static
+  // allowlist can never keep up with that: it missed http://127.0.0.1:3000
+  // in dev, and in prod it misses the real domain whenever APP_URL doesn't
+  // match exactly (custom domains, every Vercel preview getting its own
+  // random hostname, etc) — which is exactly what turned every login into a
+  // 500. So allow the origin whenever it matches the request's own Host
+  // (genuinely same-origin), and fall back to a small explicit allowlist
+  // (APP_URL + local dev hosts) for the rare legitimately cross-origin case.
+  // Never throw for a mismatch — just omit the CORS headers so the browser
+  // blocks it client-side instead of the server 500ing.
+  const extraAllowedOrigins = [
     'http://localhost:3000',
     'http://127.0.0.1:3000',
     'http://localhost:5173',
@@ -113,18 +125,13 @@ export function createApp() {
   ].filter(Boolean);
 
   // Scoped to /api only — the frontend (Vite dev assets in dev, static SPA in
-  // prod) is served same-origin and never needs CORS. Applying this globally
-  // used to 500 every asset request whenever the app was reached via an
-  // origin not in the allowlist (e.g. http://127.0.0.1:3000 instead of
-  // http://localhost:3000), producing a blank page.
-  app.use('/api', cors({
-    origin: (origin, callback) => {
-      // Allow requests with no origin (mobile apps, curl, server-to-server, same-origin)
-      if (!origin) return callback(null, true);
-      if (allowedOrigins.includes(origin)) return callback(null, true);
-      callback(new Error(`CORS policy: origin '${origin}' not allowed.`));
-    },
-    credentials: true,
+  // prod) is served same-origin and never needs CORS.
+  app.use('/api', cors((req, callback) => {
+    const origin = req.headers.origin;
+    const host = req.headers.host;
+    const sameOrigin = !!origin && !!host && (origin === `http://${host}` || origin === `https://${host}`);
+    const allowed = !origin || sameOrigin || extraAllowedOrigins.includes(origin);
+    callback(null, { origin: allowed, credentials: true });
   }));
 
   // --- API Routes ---
