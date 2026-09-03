@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useWorkspace } from '../../context/WorkspaceContext';
 import { useToast } from '../../context/ToastContext';
 import { api } from '../../lib/api';
+import { playNotificationSound } from '../../lib/sound';
 import { AppNotification } from '../../types';
 import {
   Bell,
@@ -52,34 +53,70 @@ export const NotificationsBell: React.FC<NotificationsBellProps> = ({ onOpenWork
   const [isOpen, setIsOpen] = useState(false);
   const [notifications, setNotifications] = useState<AppNotification[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
   const dropdownRef = useRef<HTMLDivElement>(null);
-  const prevUnreadRef = useRef(0);
+  // null until the first poll resolves — distinguishes "nothing seen yet" (no
+  // device alerts, would otherwise fire one per notification on every login)
+  // from "these are genuinely new since last poll".
+  const seenIdsRef = useRef<Set<string> | null>(null);
 
-  const pollUnreadCount = useCallback(async () => {
+  // Polls the full list (not just the count) so a new arrival can be
+  // announced with its actual title/body, both as a device-level
+  // Notification (when permission is granted) and as a sound — this is what
+  // makes a new notification actually "signal on the device", not just move
+  // a badge the user has to notice on their own.
+  const pollNotifications = useCallback(async () => {
     try {
-      const { count } = await api.getUnreadNotificationCount();
-      if (count > prevUnreadRef.current && prevUnreadRef.current !== 0) {
-        notify({
-          type: 'info',
-          title: 'Nouvelle notification',
-          message: count - prevUnreadRef.current > 1
-            ? `${count - prevUnreadRef.current} nouvelles notifications`
-            : 'Vous avez une nouvelle notification.',
-        });
+      const list = await api.getNotifications();
+      const unread = list.filter(n => !n.is_read);
+
+      if (seenIdsRef.current) {
+        const newOnes = unread.filter(n => !seenIdsRef.current!.has(n.id));
+        if (newOnes.length > 0) {
+          playNotificationSound();
+
+          const canUseDeviceNotification = 'Notification' in window && Notification.permission === 'granted';
+          if (canUseDeviceNotification) {
+            newOnes.slice(0, 3).forEach(n => {
+              const deviceNotif = new Notification(n.title, {
+                body: n.message || undefined,
+                icon: '/axetask.png',
+                tag: n.id,
+              });
+              deviceNotif.onclick = () => {
+                window.focus();
+                deviceNotif.close();
+              };
+            });
+          } else {
+            // No device-notification permission — fall back to the in-app
+            // toast so something still visibly signals the arrival. Sound
+            // already played above, so don't double it.
+            notify({
+              type: 'info',
+              title: newOnes.length > 1 ? `${newOnes.length} nouvelles notifications` : newOnes[0].title,
+              message: newOnes.length === 1 ? (newOnes[0].message || undefined) : undefined,
+              sound: false,
+            });
+          }
+        }
       }
-      prevUnreadRef.current = count;
-      setUnreadCount(count);
+      seenIdsRef.current = new Set(list.map(n => n.id));
+
+      setNotifications(list);
+      setUnreadCount(unread.length);
     } catch (err) {
-      console.error('Failed to poll notification count:', err);
+      console.error('Failed to poll notifications:', err);
+    } finally {
+      setLoading(false);
     }
   }, [notify]);
 
   useEffect(() => {
-    pollUnreadCount();
-    const interval = setInterval(pollUnreadCount, 30000);
+    pollNotifications();
+    const interval = setInterval(pollNotifications, 20000);
     return () => clearInterval(interval);
-  }, [pollUnreadCount]);
+  }, [pollNotifications]);
 
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
@@ -91,22 +128,15 @@ export const NotificationsBell: React.FC<NotificationsBellProps> = ({ onOpenWork
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  const loadNotifications = async () => {
-    try {
-      setLoading(true);
-      const list = await api.getNotifications();
-      setNotifications(list);
-    } catch (err) {
-      console.error('Failed to load notifications:', err);
-    } finally {
-      setLoading(false);
-    }
-  };
-
   const toggleOpen = () => {
     const next = !isOpen;
     setIsOpen(next);
-    if (next) loadNotifications();
+    if (next) {
+      pollNotifications();
+      if ('Notification' in window && Notification.permission === 'default') {
+        Notification.requestPermission().catch(() => {});
+      }
+    }
   };
 
   const handleMarkAllRead = async () => {
@@ -114,7 +144,6 @@ export const NotificationsBell: React.FC<NotificationsBellProps> = ({ onOpenWork
       await api.markAllNotificationsRead();
       setNotifications(prev => prev.map(n => ({ ...n, is_read: true })));
       setUnreadCount(0);
-      prevUnreadRef.current = 0;
     } catch (err) {
       console.error(err);
     }
@@ -125,7 +154,7 @@ export const NotificationsBell: React.FC<NotificationsBellProps> = ({ onOpenWork
       await api.clearAllNotifications();
       setNotifications([]);
       setUnreadCount(0);
-      prevUnreadRef.current = 0;
+      seenIdsRef.current = new Set();
     } catch (err) {
       console.error(err);
     }
@@ -147,7 +176,6 @@ export const NotificationsBell: React.FC<NotificationsBellProps> = ({ onOpenWork
         await api.markNotificationRead(n.id);
         setNotifications(prev => prev.map(x => x.id === n.id ? { ...x, is_read: true } : x));
         setUnreadCount(prev => Math.max(0, prev - 1));
-        prevUnreadRef.current = Math.max(0, prevUnreadRef.current - 1);
       } catch (err) {
         console.error(err);
       }
