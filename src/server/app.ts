@@ -4,15 +4,28 @@ import cors from 'cors';
 import * as db from '../db/queries.ts';
 import { User } from '../types.ts';
 
-const isProduction = process.env.NODE_ENV === 'production';
+// Resolved lazily (not at module load time) so a missing JWT_SECRET surfaces
+// as a normal per-request 500 error instead of crashing the whole serverless
+// function at import time, which Vercel reports as an opaque
+// FUNCTION_INVOCATION_FAILED with no diagnostic detail.
+let cachedJwtSecret: string | null = null;
 
-const JWT_SECRET = process.env.JWT_SECRET || (() => {
-  if (isProduction) {
+function getJwtSecret(): string {
+  if (cachedJwtSecret) return cachedJwtSecret;
+
+  const fromEnv = process.env.JWT_SECRET;
+  if (fromEnv) {
+    cachedJwtSecret = fromEnv;
+    return cachedJwtSecret;
+  }
+
+  if (process.env.NODE_ENV === 'production') {
     throw new Error('JWT_SECRET environment variable is required in production.');
   }
   console.warn('[AxeTask] JWT_SECRET is not set — using an insecure development default. Set it in .env.');
-  return 'axetask-dev-only-insecure-secret';
-})();
+  cachedJwtSecret = 'axetask-dev-only-insecure-secret';
+  return cachedJwtSecret;
+}
 
 function createToken(user: User): string {
   const payload = JSON.stringify({
@@ -23,16 +36,16 @@ function createToken(user: User): string {
     exp: Date.now() + 30 * 24 * 60 * 60 * 1000, // 30 days
   });
   const encodedPayload = Buffer.from(payload).toString('base64url');
-  const signature = crypto.createHmac('sha256', JWT_SECRET).update(encodedPayload).digest('base64url');
+  const signature = crypto.createHmac('sha256', getJwtSecret()).update(encodedPayload).digest('base64url');
   return `${encodedPayload}.${signature}`;
 }
 
 function verifyToken(token: string): { id: string; email: string; role: 'admin' | 'member'; name: string } | null {
+  const [encodedPayload, signature] = token.split('.');
+  if (!encodedPayload || !signature) return null;
+  const expectedSig = crypto.createHmac('sha256', getJwtSecret()).update(encodedPayload).digest('base64url');
+  if (signature !== expectedSig) return null;
   try {
-    const [encodedPayload, signature] = token.split('.');
-    if (!encodedPayload || !signature) return null;
-    const expectedSig = crypto.createHmac('sha256', JWT_SECRET).update(encodedPayload).digest('base64url');
-    if (signature !== expectedSig) return null;
     const payload = JSON.parse(Buffer.from(encodedPayload, 'base64url').toString('utf-8'));
     if (payload.exp && Date.now() > payload.exp) return null;
     return payload;
@@ -52,7 +65,13 @@ async function authMiddleware(req: AuthenticatedRequest, res: Response, next: Ne
   }
 
   const token = authHeader.split(' ')[1];
-  const payload = verifyToken(token);
+  let payload: ReturnType<typeof verifyToken>;
+  try {
+    payload = verifyToken(token);
+  } catch (err: any) {
+    console.error('Auth token verification error:', err);
+    return res.status(500).json({ error: err.message || 'Erreur de configuration du serveur.' });
+  }
   if (!payload) {
     return res.status(401).json({ error: 'Session invalide ou expirée.' });
   }
