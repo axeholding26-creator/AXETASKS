@@ -127,6 +127,19 @@ export const messages = pgTable('messages', {
   created_at: timestamp('created_at').defaultNow(),
 });
 
+export const notifications = pgTable('notifications', {
+  id: text('id').primaryKey(),
+  user_id: text('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  // 'task_assigned' | 'task_due_today' | 'task_overdue' | 'workspace_added'
+  type: text('type').notNull(),
+  title: text('title').notNull(),
+  message: text('message'),
+  task_id: text('task_id').references(() => tasks.id, { onDelete: 'cascade' }),
+  workspace_id: text('workspace_id').references(() => workspaces.id, { onDelete: 'cascade' }),
+  is_read: boolean('is_read').notNull().default(false),
+  created_at: timestamp('created_at').defaultNow(),
+});
+
 // Relationships
 export const usersRelations = relations(users, ({ many }) => ({
   workspacesCreated: many(workspaces),
@@ -264,5 +277,20 @@ export const messagesRelations = relations(messages, ({ one }) => ({
   sender: one(users, {
     fields: [messages.sender_id],
     references: [users.id],
+  }),
+}));
+
+export const notificationsRelations = relations(notifications, ({ one }) => ({
+  user: one(users, {
+    fields: [notifications.user_id],
+    references: [users.id],
+  }),
+  task: one(tasks, {
+    fields: [notifications.task_id],
+    references: [tasks.id],
+  }),
+  workspace: one(workspaces, {
+    fields: [notifications.workspace_id],
+    references: [workspaces.id],
   }),
 }));

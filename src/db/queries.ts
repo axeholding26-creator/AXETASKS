@@ -18,7 +18,9 @@ import {
   TaskPriority,
   WorkspaceMemberRole,
   Conversation,
-  Message
+  Message,
+  AppNotification,
+  NotificationType
 } from '../types.ts';
 
 function generateId(prefix: string = ''): string {
@@ -284,6 +286,24 @@ export async function getUserWorkspaces(userId: string, isGlobalAdmin: boolean =
     });
   } catch (error) {
     console.error('Failed to get user workspaces:', error);
+    throw new Error('Database query failed. Please try again later.', { cause: error });
+  }
+}
+
+export async function getWorkspaceById(id: string): Promise<Workspace | null> {
+  try {
+    const rows = await db.select().from(schema.workspaces).where(eq(schema.workspaces.id, id)).limit(1);
+    const ws = rows[0];
+    if (!ws) return null;
+    return {
+      id: ws.id,
+      name: ws.name,
+      color: ws.color,
+      icon: ws.icon,
+      created_at: ws.created_at ? ws.created_at.toISOString() : new Date().toISOString(),
+    };
+  } catch (error) {
+    console.error('Failed to get workspace by id:', error);
     throw new Error('Database query failed. Please try again later.', { cause: error });
   }
 }
@@ -1479,6 +1499,197 @@ export async function markConversationRead(conversationId: string, userId: strin
       .where(and(eq(schema.conversationParticipants.conversation_id, conversationId), eq(schema.conversationParticipants.user_id, userId)));
   } catch (error) {
     console.error('Failed to mark conversation read:', error);
+    throw new Error('Database query failed. Please try again later.', { cause: error });
+  }
+}
+
+// ----------------- NOTIFICATIONS -----------------
+
+function formatNotification(
+  row: typeof schema.notifications.$inferSelect,
+  task?: { id: string; title: string } | null,
+  workspace?: { id: string; name: string } | null
+): AppNotification {
+  return {
+    id: row.id,
+    user_id: row.user_id,
+    type: row.type as NotificationType,
+    title: row.title,
+    message: row.message,
+    task_id: row.task_id,
+    workspace_id: row.workspace_id,
+    is_read: row.is_read ?? false,
+    created_at: row.created_at ? row.created_at.toISOString() : new Date().toISOString(),
+    task: task || undefined,
+    workspace: workspace || undefined,
+  };
+}
+
+export async function createNotification(data: {
+  user_id: string;
+  type: NotificationType;
+  title: string;
+  message?: string;
+  task_id?: string;
+  workspace_id?: string;
+}): Promise<AppNotification> {
+  try {
+    const [created] = await db.insert(schema.notifications).values({
+      id: generateId('ntf'),
+      user_id: data.user_id,
+      type: data.type,
+      title: data.title,
+      message: data.message,
+      task_id: data.task_id,
+      workspace_id: data.workspace_id,
+    }).returning();
+    return formatNotification(created);
+  } catch (error) {
+    console.error('Failed to create notification:', error);
+    throw new Error('Database query failed. Please try again later.', { cause: error });
+  }
+}
+
+export async function getUserNotifications(userId: string, limit: number = 50): Promise<AppNotification[]> {
+  try {
+    const rows = await db.select().from(schema.notifications)
+      .where(eq(schema.notifications.user_id, userId))
+      .orderBy(desc(schema.notifications.created_at))
+      .limit(limit);
+
+    const taskIds = [...new Set(rows.map(r => r.task_id).filter(Boolean))] as string[];
+    const wsIds = [...new Set(rows.map(r => r.workspace_id).filter(Boolean))] as string[];
+
+    const tasksList = taskIds.length > 0
+      ? await db.select({ id: schema.tasks.id, title: schema.tasks.title }).from(schema.tasks).where(inArray(schema.tasks.id, taskIds))
+      : [];
+    const wsList = wsIds.length > 0
+      ? await db.select({ id: schema.workspaces.id, name: schema.workspaces.name }).from(schema.workspaces).where(inArray(schema.workspaces.id, wsIds))
+      : [];
+
+    return rows.map(r => formatNotification(
+      r,
+      r.task_id ? tasksList.find(t => t.id === r.task_id) || null : null,
+      r.workspace_id ? wsList.find(w => w.id === r.workspace_id) || null : null,
+    ));
+  } catch (error) {
+    console.error('Failed to get user notifications:', error);
+    throw new Error('Database query failed. Please try again later.', { cause: error });
+  }
+}
+
+export async function getUnreadNotificationCount(userId: string): Promise<number> {
+  try {
+    const rows = await db.select({ id: schema.notifications.id }).from(schema.notifications)
+      .where(and(eq(schema.notifications.user_id, userId), eq(schema.notifications.is_read, false)));
+    return rows.length;
+  } catch (error) {
+    console.error('Failed to get unread notification count:', error);
+    throw new Error('Database query failed. Please try again later.', { cause: error });
+  }
+}
+
+export async function markNotificationRead(id: string, userId: string): Promise<boolean> {
+  try {
+    const result = await db.update(schema.notifications)
+      .set({ is_read: true })
+      .where(and(eq(schema.notifications.id, id), eq(schema.notifications.user_id, userId)))
+      .returning();
+    return result.length > 0;
+  } catch (error) {
+    console.error('Failed to mark notification read:', error);
+    throw new Error('Database query failed. Please try again later.', { cause: error });
+  }
+}
+
+export async function markAllNotificationsRead(userId: string): Promise<void> {
+  try {
+    await db.update(schema.notifications)
+      .set({ is_read: true })
+      .where(and(eq(schema.notifications.user_id, userId), eq(schema.notifications.is_read, false)));
+  } catch (error) {
+    console.error('Failed to mark all notifications read:', error);
+    throw new Error('Database query failed. Please try again later.', { cause: error });
+  }
+}
+
+export async function deleteNotification(id: string, userId: string): Promise<boolean> {
+  try {
+    const result = await db.delete(schema.notifications)
+      .where(and(eq(schema.notifications.id, id), eq(schema.notifications.user_id, userId)))
+      .returning();
+    return result.length > 0;
+  } catch (error) {
+    console.error('Failed to delete notification:', error);
+    throw new Error('Database query failed. Please try again later.', { cause: error });
+  }
+}
+
+export async function deleteAllNotifications(userId: string): Promise<void> {
+  try {
+    await db.delete(schema.notifications).where(eq(schema.notifications.user_id, userId));
+  } catch (error) {
+    console.error('Failed to delete all notifications:', error);
+    throw new Error('Database query failed. Please try again later.', { cause: error });
+  }
+}
+
+// Scans active tasks for due-today / overdue deadlines and notifies their
+// assignee, at most once per task per type per day (checked against
+// notifications already created today). Meant to be called by a daily cron.
+export async function createDueDateNotifications(): Promise<{ created: number }> {
+  try {
+    const today = new Date().toISOString().split('T')[0];
+
+    const dueTasks = await db.select({
+      id: schema.tasks.id,
+      title: schema.tasks.title,
+      due_date: schema.tasks.due_date,
+      assignee_id: schema.tasks.assignee_id,
+    }).from(schema.tasks)
+      .where(and(
+        ne(schema.tasks.status, 'termine'),
+        sql`${schema.tasks.due_date} IS NOT NULL`,
+        sql`${schema.tasks.due_date} <= ${today}`,
+      ));
+
+    const relevant = dueTasks.filter(t => t.assignee_id);
+    if (relevant.length === 0) return { created: 0 };
+
+    const taskIds = relevant.map(t => t.id);
+    const existingToday = await db.select({
+      task_id: schema.notifications.task_id,
+      type: schema.notifications.type,
+    }).from(schema.notifications)
+      .where(and(
+        inArray(schema.notifications.task_id, taskIds),
+        sql`${schema.notifications.created_at} >= CURRENT_DATE`,
+      ));
+
+    const alreadyNotified = new Set(existingToday.map(n => `${n.task_id}:${n.type}`));
+
+    let created = 0;
+    for (const task of relevant) {
+      const isOverdue = task.due_date! < today;
+      const type: NotificationType = isOverdue ? 'task_overdue' : 'task_due_today';
+      const key = `${task.id}:${type}`;
+      if (alreadyNotified.has(key)) continue;
+
+      await createNotification({
+        user_id: task.assignee_id!,
+        type,
+        title: isOverdue ? 'Tâche en retard' : "Échéance aujourd'hui",
+        message: isOverdue
+          ? `"${task.title}" a dépassé son échéance.`
+          : `"${task.title}" est à rendre aujourd'hui.`,
+        task_id: task.id,
+      });
+      created++;
+    }
+
+    return { created };
+  } catch (error) {
+    console.error('Failed to create due date notifications:', error);
     throw new Error('Database query failed. Please try again later.', { cause: error });
   }
 }

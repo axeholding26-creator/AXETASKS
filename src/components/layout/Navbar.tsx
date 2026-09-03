@@ -4,6 +4,7 @@ import { useWorkspace } from '../../context/WorkspaceContext';
 import { Avatar } from '../common/Avatar';
 import { RoleBadge } from '../common/Badge';
 import { BrandLogo } from '../common/BrandLogo';
+import { NotificationsBell } from '../notifications/NotificationsBell';
 import { api } from '../../lib/api';
 import { User, Task } from '../../types';
 import { 
@@ -314,6 +315,9 @@ export const Navbar: React.FC<NavbarProps> = ({
             </div>
           </div>
         )}
+
+        {/* Notifications */}
+        <NotificationsBell onOpenWorkspaces={onOpenWorkspaces} />
 
         {/* Quick New Task Button */}
         <button

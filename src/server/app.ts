@@ -380,11 +380,30 @@ export function createApp() {
       if (!canAdmin) {
         return res.status(403).json({ error: 'Seul un administrateur du workspace peut ajouter des membres.' });
       }
-      const { user_id, role } = req.body;
-      if (!user_id) {
-        return res.status(400).json({ error: 'user_id est requis.' });
+      const { user_id, email, role } = req.body;
+      let targetUserId = user_id;
+      if (!targetUserId && email) {
+        const targetUser = await db.getUserByEmail(email);
+        if (!targetUser) {
+          return res.status(404).json({ error: `Aucun compte trouvé pour l'adresse ${email}.` });
+        }
+        targetUserId = targetUser.id;
       }
-      const member = await db.addWorkspaceMember(wsId, user_id, role || 'member');
+      if (!targetUserId) {
+        return res.status(400).json({ error: 'user_id ou email est requis.' });
+      }
+      const member = await db.addWorkspaceMember(wsId, targetUserId, role || 'member');
+
+      const inviter = await db.getUserById(req.user!.id);
+      const workspace = await db.getWorkspaceById(wsId);
+      await db.createNotification({
+        user_id: targetUserId,
+        type: 'workspace_added',
+        title: 'Ajouté à un espace de travail',
+        message: `${inviter?.name || 'Un administrateur'} vous a ajouté à l'espace "${workspace?.name || ''}".`,
+        workspace_id: wsId,
+      }).catch(err => console.error('Failed to create workspace_added notification:', err));
+
       res.status(201).json(member);
     } catch (err: any) {
       res.status(500).json({ error: err.message || 'Erreur lors de l ajout de membre.' });
@@ -602,6 +621,18 @@ export function createApp() {
         created_by: req.user!.id,
         tag_ids,
       });
+
+      if (assignee_id && assignee_id !== req.user!.id) {
+        db.createNotification({
+          user_id: assignee_id,
+          type: 'task_assigned',
+          title: 'Nouvelle tâche assignée',
+          message: `${req.user!.name} vous a assigné "${task.title}".`,
+          task_id: task.id,
+          workspace_id: project.workspace_id,
+        }).catch(err => console.error('Failed to create task_assigned notification:', err));
+      }
+
       res.status(201).json(task);
     } catch (err: any) {
       res.status(500).json({ error: err.message || 'Erreur lors de la création de la tâche.' });
@@ -662,6 +693,19 @@ export function createApp() {
         tag_ids,
         position,
       });
+
+      const assigneeChanged = assignee_id !== undefined && assignee_id !== task.assignee_id;
+      if (assigneeChanged && assignee_id && assignee_id !== req.user!.id) {
+        db.createNotification({
+          user_id: assignee_id,
+          type: 'task_assigned',
+          title: 'Tâche assignée',
+          message: `${req.user!.name} vous a assigné "${updated?.title || task.title}".`,
+          task_id: task.id,
+          workspace_id: task.workspace_id || undefined,
+        }).catch(err => console.error('Failed to create task_assigned notification:', err));
+      }
+
       res.json(updated);
     } catch (err: any) {
       res.status(500).json({ error: err.message || 'Erreur lors de la mise à jour de la tâche.' });
@@ -902,6 +946,83 @@ export function createApp() {
       res.json({ success: true });
     } catch (err: any) {
       res.status(500).json({ error: err.message || 'Erreur lors du marquage de lecture.' });
+    }
+  });
+
+  // --- Notifications ---
+
+  app.get('/api/notifications', authMiddleware, async (req: AuthenticatedRequest, res) => {
+    try {
+      const notifications = await db.getUserNotifications(req.user!.id);
+      res.json(notifications);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message || 'Erreur lors de la récupération des notifications.' });
+    }
+  });
+
+  app.get('/api/notifications/unread-count', authMiddleware, async (req: AuthenticatedRequest, res) => {
+    try {
+      const count = await db.getUnreadNotificationCount(req.user!.id);
+      res.json({ count });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message || 'Erreur lors du comptage des notifications.' });
+    }
+  });
+
+  app.post('/api/notifications/read-all', authMiddleware, async (req: AuthenticatedRequest, res) => {
+    try {
+      await db.markAllNotificationsRead(req.user!.id);
+      res.json({ success: true });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message || 'Erreur lors du marquage global.' });
+    }
+  });
+
+  app.post('/api/notifications/:id/read', authMiddleware, async (req: AuthenticatedRequest, res) => {
+    try {
+      const ok = await db.markNotificationRead(req.params.id, req.user!.id);
+      if (!ok) return res.status(404).json({ error: 'Notification introuvable.' });
+      res.json({ success: true });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message || 'Erreur lors du marquage de la notification.' });
+    }
+  });
+
+  app.delete('/api/notifications/:id', authMiddleware, async (req: AuthenticatedRequest, res) => {
+    try {
+      const ok = await db.deleteNotification(req.params.id, req.user!.id);
+      if (!ok) return res.status(404).json({ error: 'Notification introuvable.' });
+      res.json({ success: true });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message || 'Erreur lors de la suppression de la notification.' });
+    }
+  });
+
+  app.delete('/api/notifications', authMiddleware, async (req: AuthenticatedRequest, res) => {
+    try {
+      await db.deleteAllNotifications(req.user!.id);
+      res.json({ success: true });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message || 'Erreur lors de la suppression des notifications.' });
+    }
+  });
+
+  // Daily deadline scan — triggered by Vercel Cron (see vercel.json). Not
+  // behind authMiddleware (Vercel's cron invoker doesn't carry a user JWT);
+  // gated instead by CRON_SECRET when that env var is set.
+  app.get('/api/cron/due-reminders', async (req: Request, res: Response) => {
+    const cronSecret = process.env.CRON_SECRET;
+    if (cronSecret) {
+      const authHeader = req.headers.authorization;
+      if (authHeader !== `Bearer ${cronSecret}`) {
+        return res.status(401).json({ error: 'Non autorisé.' });
+      }
+    }
+    try {
+      const result = await db.createDueDateNotifications();
+      res.json({ success: true, ...result });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message || 'Erreur lors du scan des échéances.' });
     }
   });
 

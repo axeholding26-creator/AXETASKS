@@ -12,7 +12,8 @@ import {
   TaskStatus,
   TaskPriority,
   Conversation,
-  Message
+  Message,
+  AppNotification
 } from '../types';
 
 const TOKEN_KEY = 'axetask_jwt_token';
@@ -320,4 +321,21 @@ export const api = {
     fetchWithAuth<{ success: boolean }>(`/api/conversations/${conversationId}/read`, {
       method: 'POST',
     }),
+
+  // Notifications
+  getNotifications: () => fetchWithAuth<AppNotification[]>('/api/notifications'),
+
+  getUnreadNotificationCount: () => fetchWithAuth<{ count: number }>('/api/notifications/unread-count'),
+
+  markNotificationRead: (id: string) =>
+    fetchWithAuth<{ success: boolean }>(`/api/notifications/${id}/read`, { method: 'POST' }),
+
+  markAllNotificationsRead: () =>
+    fetchWithAuth<{ success: boolean }>('/api/notifications/read-all', { method: 'POST' }),
+
+  deleteNotification: (id: string) =>
+    fetchWithAuth<{ success: boolean }>(`/api/notifications/${id}`, { method: 'DELETE' }),
+
+  clearAllNotifications: () =>
+    fetchWithAuth<{ success: boolean }>('/api/notifications', { method: 'DELETE' }),
 };

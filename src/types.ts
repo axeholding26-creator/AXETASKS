@@ -164,3 +164,19 @@ export interface DashboardStats {
   blocked: number;
   total_logged_minutes_week: number;
 }
+
+export type NotificationType = 'task_assigned' | 'task_due_today' | 'task_overdue' | 'workspace_added';
+
+export interface AppNotification {
+  id: string;
+  user_id: string;
+  type: NotificationType;
+  title: string;
+  message?: string | null;
+  task_id?: string | null;
+  workspace_id?: string | null;
+  is_read: boolean;
+  created_at: string;
+  task?: { id: string; title: string } | null;
+  workspace?: { id: string; name: string } | null;
+}

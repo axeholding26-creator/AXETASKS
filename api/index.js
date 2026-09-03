@@ -30,6 +30,8 @@ __export(schema_exports, {
   conversationsRelations: () => conversationsRelations,
   messages: () => messages,
   messagesRelations: () => messagesRelations,
+  notifications: () => notifications,
+  notificationsRelations: () => notificationsRelations,
   projects: () => projects,
   projectsRelations: () => projectsRelations,
   subtasks: () => subtasks,
@@ -165,6 +167,18 @@ var messages = pgTable("messages", {
   content: text("content").notNull(),
   created_at: timestamp("created_at").defaultNow()
 });
+var notifications = pgTable("notifications", {
+  id: text("id").primaryKey(),
+  user_id: text("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  // 'task_assigned' | 'task_due_today' | 'task_overdue' | 'workspace_added'
+  type: text("type").notNull(),
+  title: text("title").notNull(),
+  message: text("message"),
+  task_id: text("task_id").references(() => tasks.id, { onDelete: "cascade" }),
+  workspace_id: text("workspace_id").references(() => workspaces.id, { onDelete: "cascade" }),
+  is_read: boolean("is_read").notNull().default(false),
+  created_at: timestamp("created_at").defaultNow()
+});
 var usersRelations = relations(users, ({ many }) => ({
   workspacesCreated: many(workspaces),
   workspaceMemberships: many(workspaceMembers),
@@ -288,6 +302,20 @@ var messagesRelations = relations(messages, ({ one }) => ({
   sender: one(users, {
     fields: [messages.sender_id],
     references: [users.id]
+  })
+}));
+var notificationsRelations = relations(notifications, ({ one }) => ({
+  user: one(users, {
+    fields: [notifications.user_id],
+    references: [users.id]
+  }),
+  task: one(tasks, {
+    fields: [notifications.task_id],
+    references: [tasks.id]
+  }),
+  workspace: one(workspaces, {
+    fields: [notifications.workspace_id],
+    references: [workspaces.id]
   })
 }));
 
@@ -533,6 +561,23 @@ async function getUserWorkspaces(userId, isGlobalAdmin = false) {
     });
   } catch (error) {
     console.error("Failed to get user workspaces:", error);
+    throw new Error("Database query failed. Please try again later.", { cause: error });
+  }
+}
+async function getWorkspaceById(id) {
+  try {
+    const rows = await db.select().from(workspaces).where(eq(workspaces.id, id)).limit(1);
+    const ws = rows[0];
+    if (!ws) return null;
+    return {
+      id: ws.id,
+      name: ws.name,
+      color: ws.color,
+      icon: ws.icon,
+      created_at: ws.created_at ? ws.created_at.toISOString() : (/* @__PURE__ */ new Date()).toISOString()
+    };
+  } catch (error) {
+    console.error("Failed to get workspace by id:", error);
     throw new Error("Database query failed. Please try again later.", { cause: error });
   }
 }
@@ -1512,6 +1557,143 @@ async function markConversationRead(conversationId, userId) {
     throw new Error("Database query failed. Please try again later.", { cause: error });
   }
 }
+function formatNotification(row, task, workspace) {
+  return {
+    id: row.id,
+    user_id: row.user_id,
+    type: row.type,
+    title: row.title,
+    message: row.message,
+    task_id: row.task_id,
+    workspace_id: row.workspace_id,
+    is_read: row.is_read ?? false,
+    created_at: row.created_at ? row.created_at.toISOString() : (/* @__PURE__ */ new Date()).toISOString(),
+    task: task || void 0,
+    workspace: workspace || void 0
+  };
+}
+async function createNotification(data) {
+  try {
+    const [created] = await db.insert(notifications).values({
+      id: generateId("ntf"),
+      user_id: data.user_id,
+      type: data.type,
+      title: data.title,
+      message: data.message,
+      task_id: data.task_id,
+      workspace_id: data.workspace_id
+    }).returning();
+    return formatNotification(created);
+  } catch (error) {
+    console.error("Failed to create notification:", error);
+    throw new Error("Database query failed. Please try again later.", { cause: error });
+  }
+}
+async function getUserNotifications(userId, limit = 50) {
+  try {
+    const rows = await db.select().from(notifications).where(eq(notifications.user_id, userId)).orderBy(desc(notifications.created_at)).limit(limit);
+    const taskIds = [...new Set(rows.map((r) => r.task_id).filter(Boolean))];
+    const wsIds = [...new Set(rows.map((r) => r.workspace_id).filter(Boolean))];
+    const tasksList = taskIds.length > 0 ? await db.select({ id: tasks.id, title: tasks.title }).from(tasks).where(inArray(tasks.id, taskIds)) : [];
+    const wsList = wsIds.length > 0 ? await db.select({ id: workspaces.id, name: workspaces.name }).from(workspaces).where(inArray(workspaces.id, wsIds)) : [];
+    return rows.map((r) => formatNotification(
+      r,
+      r.task_id ? tasksList.find((t) => t.id === r.task_id) || null : null,
+      r.workspace_id ? wsList.find((w) => w.id === r.workspace_id) || null : null
+    ));
+  } catch (error) {
+    console.error("Failed to get user notifications:", error);
+    throw new Error("Database query failed. Please try again later.", { cause: error });
+  }
+}
+async function getUnreadNotificationCount(userId) {
+  try {
+    const rows = await db.select({ id: notifications.id }).from(notifications).where(and(eq(notifications.user_id, userId), eq(notifications.is_read, false)));
+    return rows.length;
+  } catch (error) {
+    console.error("Failed to get unread notification count:", error);
+    throw new Error("Database query failed. Please try again later.", { cause: error });
+  }
+}
+async function markNotificationRead(id, userId) {
+  try {
+    const result = await db.update(notifications).set({ is_read: true }).where(and(eq(notifications.id, id), eq(notifications.user_id, userId))).returning();
+    return result.length > 0;
+  } catch (error) {
+    console.error("Failed to mark notification read:", error);
+    throw new Error("Database query failed. Please try again later.", { cause: error });
+  }
+}
+async function markAllNotificationsRead(userId) {
+  try {
+    await db.update(notifications).set({ is_read: true }).where(and(eq(notifications.user_id, userId), eq(notifications.is_read, false)));
+  } catch (error) {
+    console.error("Failed to mark all notifications read:", error);
+    throw new Error("Database query failed. Please try again later.", { cause: error });
+  }
+}
+async function deleteNotification(id, userId) {
+  try {
+    const result = await db.delete(notifications).where(and(eq(notifications.id, id), eq(notifications.user_id, userId))).returning();
+    return result.length > 0;
+  } catch (error) {
+    console.error("Failed to delete notification:", error);
+    throw new Error("Database query failed. Please try again later.", { cause: error });
+  }
+}
+async function deleteAllNotifications(userId) {
+  try {
+    await db.delete(notifications).where(eq(notifications.user_id, userId));
+  } catch (error) {
+    console.error("Failed to delete all notifications:", error);
+    throw new Error("Database query failed. Please try again later.", { cause: error });
+  }
+}
+async function createDueDateNotifications() {
+  try {
+    const today = (/* @__PURE__ */ new Date()).toISOString().split("T")[0];
+    const dueTasks = await db.select({
+      id: tasks.id,
+      title: tasks.title,
+      due_date: tasks.due_date,
+      assignee_id: tasks.assignee_id
+    }).from(tasks).where(and(
+      ne(tasks.status, "termine"),
+      sql`${tasks.due_date} IS NOT NULL`,
+      sql`${tasks.due_date} <= ${today}`
+    ));
+    const relevant = dueTasks.filter((t) => t.assignee_id);
+    if (relevant.length === 0) return { created: 0 };
+    const taskIds = relevant.map((t) => t.id);
+    const existingToday = await db.select({
+      task_id: notifications.task_id,
+      type: notifications.type
+    }).from(notifications).where(and(
+      inArray(notifications.task_id, taskIds),
+      sql`${notifications.created_at} >= CURRENT_DATE`
+    ));
+    const alreadyNotified = new Set(existingToday.map((n) => `${n.task_id}:${n.type}`));
+    let created = 0;
+    for (const task of relevant) {
+      const isOverdue = task.due_date < today;
+      const type = isOverdue ? "task_overdue" : "task_due_today";
+      const key = `${task.id}:${type}`;
+      if (alreadyNotified.has(key)) continue;
+      await createNotification({
+        user_id: task.assignee_id,
+        type,
+        title: isOverdue ? "T\xE2che en retard" : "\xC9ch\xE9ance aujourd'hui",
+        message: isOverdue ? `"${task.title}" a d\xE9pass\xE9 son \xE9ch\xE9ance.` : `"${task.title}" est \xE0 rendre aujourd'hui.`,
+        task_id: task.id
+      });
+      created++;
+    }
+    return { created };
+  } catch (error) {
+    console.error("Failed to create due date notifications:", error);
+    throw new Error("Database query failed. Please try again later.", { cause: error });
+  }
+}
 
 // src/server/app.ts
 var cachedJwtSecret = null;
@@ -1811,11 +1993,28 @@ function createApp() {
       if (!canAdmin) {
         return res.status(403).json({ error: "Seul un administrateur du workspace peut ajouter des membres." });
       }
-      const { user_id, role } = req.body;
-      if (!user_id) {
-        return res.status(400).json({ error: "user_id est requis." });
+      const { user_id, email, role } = req.body;
+      let targetUserId = user_id;
+      if (!targetUserId && email) {
+        const targetUser = await getUserByEmail(email);
+        if (!targetUser) {
+          return res.status(404).json({ error: `Aucun compte trouv\xE9 pour l'adresse ${email}.` });
+        }
+        targetUserId = targetUser.id;
       }
-      const member = await addWorkspaceMember(wsId, user_id, role || "member");
+      if (!targetUserId) {
+        return res.status(400).json({ error: "user_id ou email est requis." });
+      }
+      const member = await addWorkspaceMember(wsId, targetUserId, role || "member");
+      const inviter = await getUserById(req.user.id);
+      const workspace = await getWorkspaceById(wsId);
+      await createNotification({
+        user_id: targetUserId,
+        type: "workspace_added",
+        title: "Ajout\xE9 \xE0 un espace de travail",
+        message: `${inviter?.name || "Un administrateur"} vous a ajout\xE9 \xE0 l'espace "${workspace?.name || ""}".`,
+        workspace_id: wsId
+      }).catch((err) => console.error("Failed to create workspace_added notification:", err));
       res.status(201).json(member);
     } catch (err) {
       res.status(500).json({ error: err.message || "Erreur lors de l ajout de membre." });
@@ -2010,6 +2209,16 @@ function createApp() {
         created_by: req.user.id,
         tag_ids
       });
+      if (assignee_id && assignee_id !== req.user.id) {
+        createNotification({
+          user_id: assignee_id,
+          type: "task_assigned",
+          title: "Nouvelle t\xE2che assign\xE9e",
+          message: `${req.user.name} vous a assign\xE9 "${task.title}".`,
+          task_id: task.id,
+          workspace_id: project.workspace_id
+        }).catch((err) => console.error("Failed to create task_assigned notification:", err));
+      }
       res.status(201).json(task);
     } catch (err) {
       res.status(500).json({ error: err.message || "Erreur lors de la cr\xE9ation de la t\xE2che." });
@@ -2063,6 +2272,17 @@ function createApp() {
         tag_ids,
         position
       });
+      const assigneeChanged = assignee_id !== void 0 && assignee_id !== task.assignee_id;
+      if (assigneeChanged && assignee_id && assignee_id !== req.user.id) {
+        createNotification({
+          user_id: assignee_id,
+          type: "task_assigned",
+          title: "T\xE2che assign\xE9e",
+          message: `${req.user.name} vous a assign\xE9 "${updated?.title || task.title}".`,
+          task_id: task.id,
+          workspace_id: task.workspace_id || void 0
+        }).catch((err) => console.error("Failed to create task_assigned notification:", err));
+      }
       res.json(updated);
     } catch (err) {
       res.status(500).json({ error: err.message || "Erreur lors de la mise \xE0 jour de la t\xE2che." });
@@ -2272,6 +2492,71 @@ function createApp() {
       res.json({ success: true });
     } catch (err) {
       res.status(500).json({ error: err.message || "Erreur lors du marquage de lecture." });
+    }
+  });
+  app2.get("/api/notifications", authMiddleware, async (req, res) => {
+    try {
+      const notifications2 = await getUserNotifications(req.user.id);
+      res.json(notifications2);
+    } catch (err) {
+      res.status(500).json({ error: err.message || "Erreur lors de la r\xE9cup\xE9ration des notifications." });
+    }
+  });
+  app2.get("/api/notifications/unread-count", authMiddleware, async (req, res) => {
+    try {
+      const count = await getUnreadNotificationCount(req.user.id);
+      res.json({ count });
+    } catch (err) {
+      res.status(500).json({ error: err.message || "Erreur lors du comptage des notifications." });
+    }
+  });
+  app2.post("/api/notifications/read-all", authMiddleware, async (req, res) => {
+    try {
+      await markAllNotificationsRead(req.user.id);
+      res.json({ success: true });
+    } catch (err) {
+      res.status(500).json({ error: err.message || "Erreur lors du marquage global." });
+    }
+  });
+  app2.post("/api/notifications/:id/read", authMiddleware, async (req, res) => {
+    try {
+      const ok = await markNotificationRead(req.params.id, req.user.id);
+      if (!ok) return res.status(404).json({ error: "Notification introuvable." });
+      res.json({ success: true });
+    } catch (err) {
+      res.status(500).json({ error: err.message || "Erreur lors du marquage de la notification." });
+    }
+  });
+  app2.delete("/api/notifications/:id", authMiddleware, async (req, res) => {
+    try {
+      const ok = await deleteNotification(req.params.id, req.user.id);
+      if (!ok) return res.status(404).json({ error: "Notification introuvable." });
+      res.json({ success: true });
+    } catch (err) {
+      res.status(500).json({ error: err.message || "Erreur lors de la suppression de la notification." });
+    }
+  });
+  app2.delete("/api/notifications", authMiddleware, async (req, res) => {
+    try {
+      await deleteAllNotifications(req.user.id);
+      res.json({ success: true });
+    } catch (err) {
+      res.status(500).json({ error: err.message || "Erreur lors de la suppression des notifications." });
+    }
+  });
+  app2.get("/api/cron/due-reminders", async (req, res) => {
+    const cronSecret = process.env.CRON_SECRET;
+    if (cronSecret) {
+      const authHeader = req.headers.authorization;
+      if (authHeader !== `Bearer ${cronSecret}`) {
+        return res.status(401).json({ error: "Non autoris\xE9." });
+      }
+    }
+    try {
+      const result = await createDueDateNotifications();
+      res.json({ success: true, ...result });
+    } catch (err) {
+      res.status(500).json({ error: err.message || "Erreur lors du scan des \xE9ch\xE9ances." });
     }
   });
   return app2;
