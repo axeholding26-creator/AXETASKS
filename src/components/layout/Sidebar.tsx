@@ -30,15 +30,17 @@ interface SidebarProps {
 const UNREAD_POLL_INTERVAL_MS = 15000;
 
 export const Sidebar: React.FC<SidebarProps> = ({ currentView, onNavigate, isOpen, onClose }) => {
-  const { 
-    workspaces, 
-    currentWorkspace, 
-    currentProject, 
+  const {
+    workspaces,
+    currentWorkspace,
+    currentProject,
     setCurrentProjectId,
     setCurrentWorkspaceId,
     setIsCreateProjectModalOpen,
     setIsCreateWorkspaceModalOpen,
-    setIsCreateTaskModalOpen
+    setIsCreateTaskModalOpen,
+    taskVersion,
+    projectVersion
   } = useWorkspace();
 
   const [projects, setProjects] = useState<Project[]>([]);
@@ -67,7 +69,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ currentView, onNavigate, isOpe
     } else {
       setProjects([]);
     }
-  }, [currentWorkspace?.id]);
+  }, [currentWorkspace?.id, taskVersion, projectVersion]);
 
   return (
     <>

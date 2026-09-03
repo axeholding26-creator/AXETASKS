@@ -7,9 +7,10 @@ import { Task, TaskStatus, TaskPriority, Tag, User } from '../../types';
 import { StatusBadge, PriorityBadge } from '../common/Badge';
 import { Avatar } from '../common/Avatar';
 import confetti from 'canvas-confetti';
-import { 
-  X, 
-  Trash2, 
+import {
+  ArrowLeft,
+  X,
+  Trash2,
   Calendar, 
   User as UserIcon, 
   Tag as TagIcon, 
@@ -82,14 +83,15 @@ export const TaskDetailDrawer: React.FC = () => {
       setAssigneeId(data.assignee_id || '');
       setDueDate(data.due_date || '');
 
-      if (data.workspace_id) {
-        const [members, tags] = await Promise.all([
-          api.getWorkspaceMembers(data.workspace_id),
-          api.getWorkspaceTags(data.workspace_id),
-        ]);
-        setWorkspaceMembers(members.map(m => m.user).filter(Boolean) as User[]);
-        setWorkspaceTags(tags);
-      }
+      // Assignee list intentionally includes every platform user, not just
+      // existing workspace members — assigning someone new auto-grants them
+      // workspace access server-side (see ensureWorkspaceMembership).
+      const [allUsers, tags] = await Promise.all([
+        api.getUsers(),
+        data.workspace_id ? api.getWorkspaceTags(data.workspace_id) : Promise.resolve([]),
+      ]);
+      setWorkspaceMembers(allUsers);
+      setWorkspaceTags(tags);
     } catch (err) {
       console.error(err);
     } finally {
@@ -273,18 +275,27 @@ export const TaskDetailDrawer: React.FC = () => {
   const subtasksProgress = totalSubtasks > 0 ? Math.round((completedSubtasks / totalSubtasks) * 100) : 0;
 
   return (
-    <div className="fixed inset-0 z-50 overflow-hidden bg-black/80 backdrop-blur-sm flex justify-end animate-in fade-in duration-150 font-mono">
+    <div className="fixed inset-0 z-[100] overflow-hidden bg-black/80 backdrop-blur-sm flex justify-end animate-in fade-in duration-150 font-mono">
       <ConfirmDialog {...confirmProps} />
       <div className="w-full max-w-2xl bg-[#090D16] border-l border-[#1E293B] h-full flex flex-col shadow-2xl animate-in slide-in-from-right duration-200">
         {/* Header */}
-        <div className="p-3.5 border-b border-[#1E293B] bg-[#0B1120] flex items-center justify-between gap-4">
-          <div className="flex items-center gap-2 text-xs font-semibold text-slate-400 truncate">
-            <span className="flex items-center gap-1.5 text-slate-300">
-              <FolderGit2 className="w-3.5 h-3.5 text-[#3B82F6]" />
-              {task?.project?.name || 'Projet'}
+        <div className="p-3.5 border-b border-[#1E293B] bg-[#0B1120] flex items-center gap-3">
+          <button
+            onClick={() => setSelectedTaskId(null)}
+            title="Retour"
+            aria-label="Retour"
+            className="flex items-center justify-center w-8 h-8 rounded bg-[#1E293B] hover:bg-[#334155] border border-[#334155] text-slate-200 hover:text-white transition-colors shrink-0"
+          >
+            <ArrowLeft className="w-4 h-4" />
+          </button>
+
+          <div className="flex items-center gap-2 text-xs font-semibold text-slate-400 truncate min-w-0 flex-1">
+            <span className="flex items-center gap-1.5 text-slate-300 truncate">
+              <FolderGit2 className="w-3.5 h-3.5 text-[#3B82F6] shrink-0" />
+              <span className="truncate">{task?.project?.name || 'Projet'}</span>
             </span>
-            <span className="text-slate-600">/</span>
-            <span className="text-[#60A5FA] font-mono text-[11px]">#{task?.id.slice(-4)}</span>
+            <span className="text-slate-600 shrink-0">/</span>
+            <span className="text-[#60A5FA] font-mono text-[11px] shrink-0">#{task?.id.slice(-4)}</span>
           </div>
 
           <div className="flex items-center gap-2">

@@ -82,13 +82,11 @@ export const MessagesView: React.FC = () => {
 
   const openNewChat = async () => {
     setIsNewChatOpen(true);
-    if (allUsers.length === 0) {
-      try {
-        const users = await api.getUsers();
-        setAllUsers(users.filter(u => u.id !== user?.id));
-      } catch (err) {
-        console.error('Failed to load users:', err);
-      }
+    try {
+      const users = await api.getUsers();
+      setAllUsers(users.filter(u => u.id !== user?.id));
+    } catch (err) {
+      console.error('Failed to load users:', err);
     }
   };
 
@@ -282,7 +280,7 @@ export const MessagesView: React.FC = () => {
 
       {/* New Chat Modal */}
       {isNewChatOpen && (
-        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-start justify-center pt-20 p-4">
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-[100] flex items-start justify-center pt-20 p-4">
           <div className="bg-[#0F172A] border border-[#1E293B] rounded-lg w-full max-w-sm overflow-hidden shadow-2xl font-mono">
             <div className="flex items-center gap-3 px-4 py-2.5 border-b border-[#1E293B] bg-[#0B1120]">
               <Search className="w-4 h-4 text-[#3B82F6]" />

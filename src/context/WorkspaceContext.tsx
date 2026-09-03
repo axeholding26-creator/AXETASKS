@@ -24,6 +24,7 @@ interface WorkspaceContextType {
   isCreateWorkspaceModalOpen: boolean;
   activeTimer: ActiveTimer | null;
   taskVersion: number;
+  projectVersion: number;
   setCurrentWorkspaceId: (id: string | null) => void;
   setCurrentProjectId: (id: string | null) => void;
   setSelectedTaskId: (id: string | null) => void;
@@ -32,6 +33,7 @@ interface WorkspaceContextType {
   setIsCreateWorkspaceModalOpen: (open: boolean) => void;
   refreshWorkspaces: () => Promise<void>;
   bumpTaskVersion: () => void;
+  bumpProjectVersion: () => void;
   startTimer: (task: Task) => void;
   pauseTimer: () => void;
   resumeTimer: () => void;
@@ -49,6 +51,7 @@ export const WorkspaceProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   const [loading, setLoading] = useState<boolean>(true);
   const [selectedTaskId, setSelectedTaskIdState] = useState<string | null>(null);
   const [taskVersion, setTaskVersion] = useState(0);
+  const [projectVersion, setProjectVersion] = useState(0);
 
   // Opening a task pushes a history entry so the browser/mobile "back"
   // gesture closes it and returns to whatever was behind it, instead of
@@ -78,6 +81,10 @@ export const WorkspaceProvider: React.FC<{ children: React.ReactNode }> = ({ chi
 
   const bumpTaskVersion = useCallback(() => {
     setTaskVersion(v => v + 1);
+  }, []);
+
+  const bumpProjectVersion = useCallback(() => {
+    setProjectVersion(v => v + 1);
   }, []);
 
   const [isCreateTaskModalOpen, setIsCreateTaskModalOpen] = useState(false);
@@ -149,14 +156,14 @@ export const WorkspaceProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     refreshWorkspaces();
   }, [refreshWorkspaces]);
 
-  // Any task mutation can move an active_tasks_count badge shown in the
+  // Any task or project mutation can move the count badges shown in the
   // navbar/sidebar workspace switcher, so refresh workspaces alongside the
-  // task lists whenever something changes a task.
+  // task/project lists whenever something changes either.
   useEffect(() => {
-    if (taskVersion > 0) {
+    if (taskVersion > 0 || projectVersion > 0) {
       refreshWorkspaces();
     }
-  }, [taskVersion]);
+  }, [taskVersion, projectVersion]);
 
   const setCurrentWorkspaceId = (id: string | null) => {
     if (!id) {
@@ -252,6 +259,7 @@ export const WorkspaceProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         isCreateWorkspaceModalOpen,
         activeTimer,
         taskVersion,
+        projectVersion,
         setCurrentWorkspaceId,
         setCurrentProjectId,
         setSelectedTaskId,
@@ -260,6 +268,7 @@ export const WorkspaceProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         setIsCreateWorkspaceModalOpen,
         refreshWorkspaces,
         bumpTaskVersion,
+        bumpProjectVersion,
         startTimer,
         pauseTimer,
         resumeTimer,

@@ -490,6 +490,25 @@ export async function addWorkspaceMember(workspaceId: string, userId: string, ro
   }
 }
 
+// Assigning a task to someone lets the assignee picker list every platform
+// user, not just existing workspace members — so that a fresh assignment
+// actually grants access (and shows up on their dashboard), silently add
+// them to the workspace as a regular member if they aren't already in it.
+// A no-op when they're already a member (whatever their role there).
+export async function ensureWorkspaceMembership(workspaceId: string, userId: string): Promise<void> {
+  try {
+    const existing = await db.select({ id: schema.workspaceMembers.id }).from(schema.workspaceMembers)
+      .where(and(eq(schema.workspaceMembers.workspace_id, workspaceId), eq(schema.workspaceMembers.user_id, userId)))
+      .limit(1);
+    if (existing.length === 0) {
+      await addWorkspaceMember(workspaceId, userId, 'member');
+    }
+  } catch (error) {
+    console.error('Failed to ensure workspace membership:', error);
+    throw new Error('Database query failed. Please try again later.', { cause: error });
+  }
+}
+
 export async function removeWorkspaceMember(workspaceId: string, userId: string): Promise<boolean> {
   try {
     await db.delete(schema.workspaceMembers)
@@ -714,6 +733,17 @@ export async function createTag(workspaceId: string, name: string, color: string
     };
   } catch (error) {
     console.error('Failed to create tag:', error);
+    throw new Error('Database query failed. Please try again later.', { cause: error });
+  }
+}
+
+export async function getTagById(id: string): Promise<{ id: string; workspace_id: string } | null> {
+  try {
+    const rows = await db.select({ id: schema.tags.id, workspace_id: schema.tags.workspace_id })
+      .from(schema.tags).where(eq(schema.tags.id, id)).limit(1);
+    return rows[0] || null;
+  } catch (error) {
+    console.error('Failed to get tag by id:', error);
     throw new Error('Database query failed. Please try again later.', { cause: error });
   }
 }
@@ -1037,6 +1067,17 @@ export async function addSubtask(taskId: string, title: string): Promise<Subtask
   }
 }
 
+export async function getSubtaskById(id: string): Promise<{ id: string; task_id: string } | null> {
+  try {
+    const rows = await db.select({ id: schema.subtasks.id, task_id: schema.subtasks.task_id })
+      .from(schema.subtasks).where(eq(schema.subtasks.id, id)).limit(1);
+    return rows[0] || null;
+  } catch (error) {
+    console.error('Failed to get subtask by id:', error);
+    throw new Error('Database query failed. Please try again later.', { cause: error });
+  }
+}
+
 export async function updateSubtask(id: string, updates: { completed?: boolean; title?: string }): Promise<Subtask | null> {
   try {
     const [updated] = await db.update(schema.subtasks)
@@ -1105,6 +1146,17 @@ export async function addComment(taskId: string, userId: string, content: string
   }
 }
 
+export async function getCommentById(id: string): Promise<{ id: string; task_id: string; user_id: string } | null> {
+  try {
+    const rows = await db.select({ id: schema.comments.id, task_id: schema.comments.task_id, user_id: schema.comments.user_id })
+      .from(schema.comments).where(eq(schema.comments.id, id)).limit(1);
+    return rows[0] || null;
+  } catch (error) {
+    console.error('Failed to get comment by id:', error);
+    throw new Error('Database query failed. Please try again later.', { cause: error });
+  }
+}
+
 export async function deleteComment(id: string): Promise<boolean> {
   try {
     await db.delete(schema.comments).where(eq(schema.comments.id, id));
@@ -1155,6 +1207,17 @@ export async function addAttachment(taskId: string, userId: string, fileName: st
   }
 }
 
+export async function getAttachmentById(id: string): Promise<{ id: string; task_id: string; user_id: string } | null> {
+  try {
+    const rows = await db.select({ id: schema.attachments.id, task_id: schema.attachments.task_id, user_id: schema.attachments.user_id })
+      .from(schema.attachments).where(eq(schema.attachments.id, id)).limit(1);
+    return rows[0] || null;
+  } catch (error) {
+    console.error('Failed to get attachment by id:', error);
+    throw new Error('Database query failed. Please try again later.', { cause: error });
+  }
+}
+
 export async function deleteAttachment(id: string): Promise<boolean> {
   try {
     await db.delete(schema.attachments).where(eq(schema.attachments.id, id));
@@ -1199,6 +1262,17 @@ export async function logTime(taskId: string, userId: string, durationMinutes: n
     };
   } catch (error) {
     console.error('Failed to log time:', error);
+    throw new Error('Database query failed. Please try again later.', { cause: error });
+  }
+}
+
+export async function getTimeEntryById(id: string): Promise<{ id: string; task_id: string; user_id: string } | null> {
+  try {
+    const rows = await db.select({ id: schema.timeEntries.id, task_id: schema.timeEntries.task_id, user_id: schema.timeEntries.user_id })
+      .from(schema.timeEntries).where(eq(schema.timeEntries.id, id)).limit(1);
+    return rows[0] || null;
+  } catch (error) {
+    console.error('Failed to get time entry by id:', error);
     throw new Error('Database query failed. Please try again later.', { cause: error });
   }
 }

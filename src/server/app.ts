@@ -596,6 +596,13 @@ export function createApp() {
 
   app.delete('/api/tags/:id', authMiddleware, async (req: AuthenticatedRequest, res) => {
     try {
+      const tag = await db.getTagById(req.params.id);
+      if (!tag) return res.status(404).json({ error: 'Tag introuvable.' });
+      const isGlobalAdmin = req.user!.role === 'admin';
+      const canAccess = await db.userCanAccessWorkspace(req.user!.id, tag.workspace_id, isGlobalAdmin);
+      if (!canAccess) {
+        return res.status(403).json({ error: 'Accès refusé à ce workspace.' });
+      }
       await db.deleteTag(req.params.id);
       res.json({ success: true });
     } catch (err: any) {
@@ -644,6 +651,10 @@ export function createApp() {
         created_by: req.user!.id,
         tag_ids,
       });
+
+      if (assignee_id) {
+        await db.ensureWorkspaceMembership(project.workspace_id, assignee_id);
+      }
 
       if (assignee_id && assignee_id !== req.user!.id) {
         db.createNotification({
@@ -718,6 +729,9 @@ export function createApp() {
       });
 
       const assigneeChanged = assignee_id !== undefined && assignee_id !== task.assignee_id;
+      if (assigneeChanged && assignee_id && task.workspace_id) {
+        await db.ensureWorkspaceMembership(task.workspace_id, assignee_id);
+      }
       if (assigneeChanged && assignee_id && assignee_id !== req.user!.id) {
         db.createNotification({
           user_id: assignee_id,
@@ -765,6 +779,14 @@ export function createApp() {
       return res.status(400).json({ error: 'Format invalide.' });
     }
     try {
+      const isGlobalAdmin = req.user!.role === 'admin';
+      for (const item of items) {
+        const task = await db.getTaskById(item.id);
+        if (!task) return res.status(404).json({ error: 'Tâche introuvable.' });
+        if (task.workspace_id && !(await db.userCanAccessWorkspace(req.user!.id, task.workspace_id, isGlobalAdmin))) {
+          return res.status(403).json({ error: 'Accès refusé à une des tâches.' });
+        }
+      }
       await db.reorderTasks(items);
       res.json({ success: true });
     } catch (err: any) {
@@ -796,6 +818,10 @@ export function createApp() {
     try {
       const task = await db.getTaskById(req.params.id);
       if (!task) return res.status(404).json({ error: 'Tâche introuvable.' });
+      const isGlobalAdmin = req.user!.role === 'admin';
+      if (task.workspace_id && !(await db.userCanAccessWorkspace(req.user!.id, task.workspace_id, isGlobalAdmin))) {
+        return res.status(403).json({ error: 'Accès refusé à cette tâche.' });
+      }
       const { title } = req.body;
       if (!title) return res.status(400).json({ error: 'Le titre est requis.' });
       const subtask = await db.addSubtask(req.params.id, title);
@@ -808,6 +834,13 @@ export function createApp() {
   app.patch('/api/subtasks/:id', authMiddleware, async (req: AuthenticatedRequest, res) => {
     const { completed, title } = req.body;
     try {
+      const subtask = await db.getSubtaskById(req.params.id);
+      if (!subtask) return res.status(404).json({ error: 'Sous-tâche introuvable.' });
+      const task = await db.getTaskById(subtask.task_id);
+      const isGlobalAdmin = req.user!.role === 'admin';
+      if (task?.workspace_id && !(await db.userCanAccessWorkspace(req.user!.id, task.workspace_id, isGlobalAdmin))) {
+        return res.status(403).json({ error: 'Accès refusé à cette sous-tâche.' });
+      }
       const updated = await db.updateSubtask(req.params.id, { completed, title });
       if (!updated) return res.status(404).json({ error: 'Sous-tâche introuvable.' });
       res.json(updated);
@@ -818,6 +851,13 @@ export function createApp() {
 
   app.delete('/api/subtasks/:id', authMiddleware, async (req: AuthenticatedRequest, res) => {
     try {
+      const subtask = await db.getSubtaskById(req.params.id);
+      if (!subtask) return res.status(404).json({ error: 'Sous-tâche introuvable.' });
+      const task = await db.getTaskById(subtask.task_id);
+      const isGlobalAdmin = req.user!.role === 'admin';
+      if (task?.workspace_id && !(await db.userCanAccessWorkspace(req.user!.id, task.workspace_id, isGlobalAdmin))) {
+        return res.status(403).json({ error: 'Accès refusé à cette sous-tâche.' });
+      }
       await db.deleteSubtask(req.params.id);
       res.json({ success: true });
     } catch (err: any) {
@@ -830,6 +870,10 @@ export function createApp() {
     try {
       const task = await db.getTaskById(req.params.id);
       if (!task) return res.status(404).json({ error: 'Tâche introuvable.' });
+      const isGlobalAdmin = req.user!.role === 'admin';
+      if (task.workspace_id && !(await db.userCanAccessWorkspace(req.user!.id, task.workspace_id, isGlobalAdmin))) {
+        return res.status(403).json({ error: 'Accès refusé à cette tâche.' });
+      }
       const { content } = req.body;
       if (!content) return res.status(400).json({ error: 'Le contenu est requis.' });
       const comment = await db.addComment(req.params.id, req.user!.id, content);
@@ -855,6 +899,14 @@ export function createApp() {
 
   app.delete('/api/comments/:id', authMiddleware, async (req: AuthenticatedRequest, res) => {
     try {
+      const comment = await db.getCommentById(req.params.id);
+      if (!comment) return res.status(404).json({ error: 'Commentaire introuvable.' });
+      const isGlobalAdmin = req.user!.role === 'admin';
+      const task = await db.getTaskById(comment.task_id);
+      const isWorkspaceAdmin = task?.workspace_id ? await db.userIsWorkspaceAdmin(req.user!.id, task.workspace_id, isGlobalAdmin) : isGlobalAdmin;
+      if (comment.user_id !== req.user!.id && !isWorkspaceAdmin) {
+        return res.status(403).json({ error: 'Seul l\'auteur ou un administrateur peut supprimer ce commentaire.' });
+      }
       await db.deleteComment(req.params.id);
       res.json({ success: true });
     } catch (err: any) {
@@ -867,6 +919,10 @@ export function createApp() {
     try {
       const task = await db.getTaskById(req.params.id);
       if (!task) return res.status(404).json({ error: 'Tâche introuvable.' });
+      const isGlobalAdmin = req.user!.role === 'admin';
+      if (task.workspace_id && !(await db.userCanAccessWorkspace(req.user!.id, task.workspace_id, isGlobalAdmin))) {
+        return res.status(403).json({ error: 'Accès refusé à cette tâche.' });
+      }
       const { file_name, file_url, file_size, file_type } = req.body;
       if (!file_name || !file_url) {
         return res.status(400).json({ error: 'Nom et URL de fichier requis.' });
@@ -880,6 +936,13 @@ export function createApp() {
 
   app.delete('/api/attachments/:id', authMiddleware, async (req: AuthenticatedRequest, res) => {
     try {
+      const attachment = await db.getAttachmentById(req.params.id);
+      if (!attachment) return res.status(404).json({ error: 'Pièce jointe introuvable.' });
+      const task = await db.getTaskById(attachment.task_id);
+      const isGlobalAdmin = req.user!.role === 'admin';
+      if (task?.workspace_id && !(await db.userCanAccessWorkspace(req.user!.id, task.workspace_id, isGlobalAdmin))) {
+        return res.status(403).json({ error: 'Accès refusé à cette pièce jointe.' });
+      }
       await db.deleteAttachment(req.params.id);
       res.json({ success: true });
     } catch (err: any) {
@@ -892,6 +955,10 @@ export function createApp() {
     try {
       const task = await db.getTaskById(req.params.id);
       if (!task) return res.status(404).json({ error: 'Tâche introuvable.' });
+      const isGlobalAdmin = req.user!.role === 'admin';
+      if (task.workspace_id && !(await db.userCanAccessWorkspace(req.user!.id, task.workspace_id, isGlobalAdmin))) {
+        return res.status(403).json({ error: 'Accès refusé à cette tâche.' });
+      }
       const { duration_minutes, note, date } = req.body;
       if (!duration_minutes || duration_minutes <= 0) {
         return res.status(400).json({ error: 'Durée valide en minutes requise.' });
@@ -905,6 +972,14 @@ export function createApp() {
 
   app.delete('/api/time-entries/:id', authMiddleware, async (req: AuthenticatedRequest, res) => {
     try {
+      const entry = await db.getTimeEntryById(req.params.id);
+      if (!entry) return res.status(404).json({ error: 'Entrée de temps introuvable.' });
+      const isGlobalAdmin = req.user!.role === 'admin';
+      const task = await db.getTaskById(entry.task_id);
+      const isWorkspaceAdmin = task?.workspace_id ? await db.userIsWorkspaceAdmin(req.user!.id, task.workspace_id, isGlobalAdmin) : isGlobalAdmin;
+      if (entry.user_id !== req.user!.id && !isWorkspaceAdmin) {
+        return res.status(403).json({ error: 'Seul l\'auteur ou un administrateur peut supprimer cette entrée de temps.' });
+      }
       await db.deleteTimeEntry(req.params.id);
       res.json({ success: true });
     } catch (err: any) {

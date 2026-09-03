@@ -51,7 +51,8 @@ export const ProjectView: React.FC<ProjectViewProps> = ({ onBackToWorkspace }) =
     startTimer,
     activeTimer,
     taskVersion,
-    bumpTaskVersion
+    bumpTaskVersion,
+    bumpProjectVersion
   } = useWorkspace();
 
   const [tasks, setTasks] = useState<Task[]>([]);
@@ -108,6 +109,7 @@ export const ProjectView: React.FC<ProjectViewProps> = ({ onBackToWorkspace }) =
     });
     // Refresh project data to reflect name change in header
     await loadProjectData();
+    bumpProjectVersion();
   };
 
   useEffect(() => {

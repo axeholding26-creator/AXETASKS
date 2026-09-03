@@ -731,6 +731,17 @@ async function addWorkspaceMember(workspaceId, userId, role = "member") {
     throw new Error("Database query failed. Please try again later.", { cause: error });
   }
 }
+async function ensureWorkspaceMembership(workspaceId, userId) {
+  try {
+    const existing = await db.select({ id: workspaceMembers.id }).from(workspaceMembers).where(and(eq(workspaceMembers.workspace_id, workspaceId), eq(workspaceMembers.user_id, userId))).limit(1);
+    if (existing.length === 0) {
+      await addWorkspaceMember(workspaceId, userId, "member");
+    }
+  } catch (error) {
+    console.error("Failed to ensure workspace membership:", error);
+    throw new Error("Database query failed. Please try again later.", { cause: error });
+  }
+}
 async function removeWorkspaceMember(workspaceId, userId) {
   try {
     await db.delete(workspaceMembers).where(and(eq(workspaceMembers.workspace_id, workspaceId), eq(workspaceMembers.user_id, userId)));
@@ -922,6 +933,15 @@ async function createTag(workspaceId, name, color = "#2563EB") {
     };
   } catch (error) {
     console.error("Failed to create tag:", error);
+    throw new Error("Database query failed. Please try again later.", { cause: error });
+  }
+}
+async function getTagById(id) {
+  try {
+    const rows = await db.select({ id: tags.id, workspace_id: tags.workspace_id }).from(tags).where(eq(tags.id, id)).limit(1);
+    return rows[0] || null;
+  } catch (error) {
+    console.error("Failed to get tag by id:", error);
     throw new Error("Database query failed. Please try again later.", { cause: error });
   }
 }
@@ -1188,6 +1208,15 @@ async function addSubtask(taskId, title) {
     throw new Error("Database query failed. Please try again later.", { cause: error });
   }
 }
+async function getSubtaskById(id) {
+  try {
+    const rows = await db.select({ id: subtasks.id, task_id: subtasks.task_id }).from(subtasks).where(eq(subtasks.id, id)).limit(1);
+    return rows[0] || null;
+  } catch (error) {
+    console.error("Failed to get subtask by id:", error);
+    throw new Error("Database query failed. Please try again later.", { cause: error });
+  }
+}
 async function updateSubtask(id, updates) {
   try {
     const [updated] = await db.update(subtasks).set({
@@ -1245,6 +1274,15 @@ async function addComment(taskId, userId, content) {
     throw new Error("Database query failed. Please try again later.", { cause: error });
   }
 }
+async function getCommentById(id) {
+  try {
+    const rows = await db.select({ id: comments.id, task_id: comments.task_id, user_id: comments.user_id }).from(comments).where(eq(comments.id, id)).limit(1);
+    return rows[0] || null;
+  } catch (error) {
+    console.error("Failed to get comment by id:", error);
+    throw new Error("Database query failed. Please try again later.", { cause: error });
+  }
+}
 async function deleteComment(id) {
   try {
     await db.delete(comments).where(eq(comments.id, id));
@@ -1289,6 +1327,15 @@ async function addAttachment(taskId, userId, fileName, fileUrl, fileSize, fileTy
     throw new Error("Database query failed. Please try again later.", { cause: error });
   }
 }
+async function getAttachmentById(id) {
+  try {
+    const rows = await db.select({ id: attachments.id, task_id: attachments.task_id, user_id: attachments.user_id }).from(attachments).where(eq(attachments.id, id)).limit(1);
+    return rows[0] || null;
+  } catch (error) {
+    console.error("Failed to get attachment by id:", error);
+    throw new Error("Database query failed. Please try again later.", { cause: error });
+  }
+}
 async function deleteAttachment(id) {
   try {
     await db.delete(attachments).where(eq(attachments.id, id));
@@ -1328,6 +1375,15 @@ async function logTime(taskId, userId, durationMinutes, note, date) {
     };
   } catch (error) {
     console.error("Failed to log time:", error);
+    throw new Error("Database query failed. Please try again later.", { cause: error });
+  }
+}
+async function getTimeEntryById(id) {
+  try {
+    const rows = await db.select({ id: timeEntries.id, task_id: timeEntries.task_id, user_id: timeEntries.user_id }).from(timeEntries).where(eq(timeEntries.id, id)).limit(1);
+    return rows[0] || null;
+  } catch (error) {
+    console.error("Failed to get time entry by id:", error);
     throw new Error("Database query failed. Please try again later.", { cause: error });
   }
 }
@@ -2183,6 +2239,13 @@ function createApp() {
   });
   app2.delete("/api/tags/:id", authMiddleware, async (req, res) => {
     try {
+      const tag = await getTagById(req.params.id);
+      if (!tag) return res.status(404).json({ error: "Tag introuvable." });
+      const isGlobalAdmin = req.user.role === "admin";
+      const canAccess = await userCanAccessWorkspace(req.user.id, tag.workspace_id, isGlobalAdmin);
+      if (!canAccess) {
+        return res.status(403).json({ error: "Acc\xE8s refus\xE9 \xE0 ce workspace." });
+      }
       await deleteTag(req.params.id);
       res.json({ success: true });
     } catch (err) {
@@ -2228,6 +2291,9 @@ function createApp() {
         created_by: req.user.id,
         tag_ids
       });
+      if (assignee_id) {
+        await ensureWorkspaceMembership(project.workspace_id, assignee_id);
+      }
       if (assignee_id && assignee_id !== req.user.id) {
         createNotification({
           user_id: assignee_id,
@@ -2292,6 +2358,9 @@ function createApp() {
         position
       });
       const assigneeChanged = assignee_id !== void 0 && assignee_id !== task.assignee_id;
+      if (assigneeChanged && assignee_id && task.workspace_id) {
+        await ensureWorkspaceMembership(task.workspace_id, assignee_id);
+      }
       if (assigneeChanged && assignee_id && assignee_id !== req.user.id) {
         createNotification({
           user_id: assignee_id,
@@ -2336,6 +2405,14 @@ function createApp() {
       return res.status(400).json({ error: "Format invalide." });
     }
     try {
+      const isGlobalAdmin = req.user.role === "admin";
+      for (const item of items) {
+        const task = await getTaskById(item.id);
+        if (!task) return res.status(404).json({ error: "T\xE2che introuvable." });
+        if (task.workspace_id && !await userCanAccessWorkspace(req.user.id, task.workspace_id, isGlobalAdmin)) {
+          return res.status(403).json({ error: "Acc\xE8s refus\xE9 \xE0 une des t\xE2ches." });
+        }
+      }
       await reorderTasks(items);
       res.json({ success: true });
     } catch (err) {
@@ -2363,6 +2440,10 @@ function createApp() {
     try {
       const task = await getTaskById(req.params.id);
       if (!task) return res.status(404).json({ error: "T\xE2che introuvable." });
+      const isGlobalAdmin = req.user.role === "admin";
+      if (task.workspace_id && !await userCanAccessWorkspace(req.user.id, task.workspace_id, isGlobalAdmin)) {
+        return res.status(403).json({ error: "Acc\xE8s refus\xE9 \xE0 cette t\xE2che." });
+      }
       const { title } = req.body;
       if (!title) return res.status(400).json({ error: "Le titre est requis." });
       const subtask = await addSubtask(req.params.id, title);
@@ -2374,6 +2455,13 @@ function createApp() {
   app2.patch("/api/subtasks/:id", authMiddleware, async (req, res) => {
     const { completed, title } = req.body;
     try {
+      const subtask = await getSubtaskById(req.params.id);
+      if (!subtask) return res.status(404).json({ error: "Sous-t\xE2che introuvable." });
+      const task = await getTaskById(subtask.task_id);
+      const isGlobalAdmin = req.user.role === "admin";
+      if (task?.workspace_id && !await userCanAccessWorkspace(req.user.id, task.workspace_id, isGlobalAdmin)) {
+        return res.status(403).json({ error: "Acc\xE8s refus\xE9 \xE0 cette sous-t\xE2che." });
+      }
       const updated = await updateSubtask(req.params.id, { completed, title });
       if (!updated) return res.status(404).json({ error: "Sous-t\xE2che introuvable." });
       res.json(updated);
@@ -2383,6 +2471,13 @@ function createApp() {
   });
   app2.delete("/api/subtasks/:id", authMiddleware, async (req, res) => {
     try {
+      const subtask = await getSubtaskById(req.params.id);
+      if (!subtask) return res.status(404).json({ error: "Sous-t\xE2che introuvable." });
+      const task = await getTaskById(subtask.task_id);
+      const isGlobalAdmin = req.user.role === "admin";
+      if (task?.workspace_id && !await userCanAccessWorkspace(req.user.id, task.workspace_id, isGlobalAdmin)) {
+        return res.status(403).json({ error: "Acc\xE8s refus\xE9 \xE0 cette sous-t\xE2che." });
+      }
       await deleteSubtask(req.params.id);
       res.json({ success: true });
     } catch (err) {
@@ -2393,6 +2488,10 @@ function createApp() {
     try {
       const task = await getTaskById(req.params.id);
       if (!task) return res.status(404).json({ error: "T\xE2che introuvable." });
+      const isGlobalAdmin = req.user.role === "admin";
+      if (task.workspace_id && !await userCanAccessWorkspace(req.user.id, task.workspace_id, isGlobalAdmin)) {
+        return res.status(403).json({ error: "Acc\xE8s refus\xE9 \xE0 cette t\xE2che." });
+      }
       const { content } = req.body;
       if (!content) return res.status(400).json({ error: "Le contenu est requis." });
       const comment = await addComment(req.params.id, req.user.id, content);
@@ -2415,6 +2514,14 @@ function createApp() {
   });
   app2.delete("/api/comments/:id", authMiddleware, async (req, res) => {
     try {
+      const comment = await getCommentById(req.params.id);
+      if (!comment) return res.status(404).json({ error: "Commentaire introuvable." });
+      const isGlobalAdmin = req.user.role === "admin";
+      const task = await getTaskById(comment.task_id);
+      const isWorkspaceAdmin = task?.workspace_id ? await userIsWorkspaceAdmin(req.user.id, task.workspace_id, isGlobalAdmin) : isGlobalAdmin;
+      if (comment.user_id !== req.user.id && !isWorkspaceAdmin) {
+        return res.status(403).json({ error: "Seul l'auteur ou un administrateur peut supprimer ce commentaire." });
+      }
       await deleteComment(req.params.id);
       res.json({ success: true });
     } catch (err) {
@@ -2425,6 +2532,10 @@ function createApp() {
     try {
       const task = await getTaskById(req.params.id);
       if (!task) return res.status(404).json({ error: "T\xE2che introuvable." });
+      const isGlobalAdmin = req.user.role === "admin";
+      if (task.workspace_id && !await userCanAccessWorkspace(req.user.id, task.workspace_id, isGlobalAdmin)) {
+        return res.status(403).json({ error: "Acc\xE8s refus\xE9 \xE0 cette t\xE2che." });
+      }
       const { file_name, file_url, file_size, file_type } = req.body;
       if (!file_name || !file_url) {
         return res.status(400).json({ error: "Nom et URL de fichier requis." });
@@ -2437,6 +2548,13 @@ function createApp() {
   });
   app2.delete("/api/attachments/:id", authMiddleware, async (req, res) => {
     try {
+      const attachment = await getAttachmentById(req.params.id);
+      if (!attachment) return res.status(404).json({ error: "Pi\xE8ce jointe introuvable." });
+      const task = await getTaskById(attachment.task_id);
+      const isGlobalAdmin = req.user.role === "admin";
+      if (task?.workspace_id && !await userCanAccessWorkspace(req.user.id, task.workspace_id, isGlobalAdmin)) {
+        return res.status(403).json({ error: "Acc\xE8s refus\xE9 \xE0 cette pi\xE8ce jointe." });
+      }
       await deleteAttachment(req.params.id);
       res.json({ success: true });
     } catch (err) {
@@ -2447,6 +2565,10 @@ function createApp() {
     try {
       const task = await getTaskById(req.params.id);
       if (!task) return res.status(404).json({ error: "T\xE2che introuvable." });
+      const isGlobalAdmin = req.user.role === "admin";
+      if (task.workspace_id && !await userCanAccessWorkspace(req.user.id, task.workspace_id, isGlobalAdmin)) {
+        return res.status(403).json({ error: "Acc\xE8s refus\xE9 \xE0 cette t\xE2che." });
+      }
       const { duration_minutes, note, date } = req.body;
       if (!duration_minutes || duration_minutes <= 0) {
         return res.status(400).json({ error: "Dur\xE9e valide en minutes requise." });
@@ -2459,6 +2581,14 @@ function createApp() {
   });
   app2.delete("/api/time-entries/:id", authMiddleware, async (req, res) => {
     try {
+      const entry = await getTimeEntryById(req.params.id);
+      if (!entry) return res.status(404).json({ error: "Entr\xE9e de temps introuvable." });
+      const isGlobalAdmin = req.user.role === "admin";
+      const task = await getTaskById(entry.task_id);
+      const isWorkspaceAdmin = task?.workspace_id ? await userIsWorkspaceAdmin(req.user.id, task.workspace_id, isGlobalAdmin) : isGlobalAdmin;
+      if (entry.user_id !== req.user.id && !isWorkspaceAdmin) {
+        return res.status(403).json({ error: "Seul l'auteur ou un administrateur peut supprimer cette entr\xE9e de temps." });
+      }
       await deleteTimeEntry(req.params.id);
       res.json({ success: true });
     } catch (err) {

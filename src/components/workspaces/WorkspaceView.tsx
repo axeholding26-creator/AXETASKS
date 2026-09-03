@@ -39,7 +39,9 @@ export const WorkspaceView: React.FC<WorkspaceViewProps> = ({
     setCurrentProjectId,
     setIsCreateProjectModalOpen,
     refreshWorkspaces,
-    taskVersion
+    taskVersion,
+    projectVersion,
+    bumpProjectVersion
   } = useWorkspace();
   const { confirmProps, confirm } = useConfirm();
 
@@ -95,7 +97,7 @@ export const WorkspaceView: React.FC<WorkspaceViewProps> = ({
 
   useEffect(() => {
     loadData();
-  }, [currentWorkspace?.id, taskVersion]);
+  }, [currentWorkspace?.id, taskVersion, projectVersion]);
 
   const handleDeleteProject = async (projectId: string, e: React.MouseEvent) => {
     e.stopPropagation();
@@ -108,7 +110,7 @@ export const WorkspaceView: React.FC<WorkspaceViewProps> = ({
     if (!ok) return;
     try {
       await api.deleteProject(projectId);
-      loadData();
+      bumpProjectVersion();
     } catch (err) {
       console.error(err);
     }

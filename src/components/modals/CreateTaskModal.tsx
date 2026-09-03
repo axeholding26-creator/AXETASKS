@@ -46,14 +46,16 @@ export const CreateTaskModal: React.FC = () => {
       setSelectedTagIds([]);
       setError('');
 
-      // Fetch workspace projects, members and tags
+      // Fetch workspace projects, tags, and every platform user for the
+      // assignee list — assigning someone new auto-grants them workspace
+      // access server-side (see ensureWorkspaceMembership).
       Promise.all([
         api.getWorkspaceProjects(currentWorkspace.id),
-        api.getWorkspaceMembers(currentWorkspace.id),
+        api.getUsers(),
         api.getWorkspaceTags(currentWorkspace.id),
-      ]).then(([prjs, mems, tgs]) => {
+      ]).then(([prjs, allUsers, tgs]) => {
         setProjects(prjs);
-        setMembers(mems.map(m => m.user).filter(Boolean) as User[]);
+        setMembers(allUsers);
         setTags(tgs);
         if (!currentProject && prjs.length > 0) {
           setProjectId(prjs[0].id);
@@ -110,7 +112,7 @@ export const CreateTaskModal: React.FC = () => {
   };
 
   return (
-    <div className="fixed inset-0 z-50 overflow-y-auto bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in duration-150 font-mono">
+    <div className="fixed inset-0 z-[100] overflow-y-auto bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in duration-150 font-mono">
       <div className="w-full max-w-xl bg-[#0F172A] border border-[#1E293B] rounded shadow-2xl shadow-black/80 overflow-hidden animate-in zoom-in-95 duration-150">
         {/* Modal Header */}
         <div className="p-4 border-b border-[#1E293B] bg-[#0B1120] flex items-center justify-between">

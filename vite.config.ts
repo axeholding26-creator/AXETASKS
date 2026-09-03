@@ -34,7 +34,12 @@ export default defineConfig(() => {
           ]
         },
         devOptions: {
-          enabled: true,
+          // Was `true` — a dev-mode service worker was silently caching the
+          // app shell in the browser, so code changes (even after a hard
+          // refresh) never showed up until it was manually unregistered.
+          // PWA behavior in production (the actual point of this plugin) is
+          // unaffected by this flag.
+          enabled: false,
           type: 'module',
           navigateFallback: 'index.html'
         }

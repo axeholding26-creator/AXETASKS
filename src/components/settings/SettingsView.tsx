@@ -1057,7 +1057,7 @@ export const SettingsView: React.FC = () => {
 
       {/* CONFIRM DELETE USER MODAL */}
       {userToDelete && (
-        <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+        <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-[100] flex items-center justify-center p-4">
           <div className="bg-[#0F172A] border border-rose-500/40 rounded-lg p-5 max-w-md w-full shadow-2xl space-y-4 animate-in zoom-in-95 duration-150">
             <div className="flex items-center gap-2.5 text-rose-400">
               <AlertTriangle className="w-5 h-5" />
