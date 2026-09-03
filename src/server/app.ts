@@ -106,11 +106,18 @@ export function createApp() {
   // --- CORS ---
   const allowedOrigins = [
     'http://localhost:3000',
+    'http://127.0.0.1:3000',
     'http://localhost:5173',
+    'http://127.0.0.1:5173',
     process.env.APP_URL,
   ].filter(Boolean);
 
-  app.use(cors({
+  // Scoped to /api only — the frontend (Vite dev assets in dev, static SPA in
+  // prod) is served same-origin and never needs CORS. Applying this globally
+  // used to 500 every asset request whenever the app was reached via an
+  // origin not in the allowlist (e.g. http://127.0.0.1:3000 instead of
+  // http://localhost:3000), producing a blank page.
+  app.use('/api', cors({
     origin: (origin, callback) => {
       // Allow requests with no origin (mobile apps, curl, server-to-server, same-origin)
       if (!origin) return callback(null, true);

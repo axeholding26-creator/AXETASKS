@@ -1596,10 +1596,12 @@ function createApp() {
   app2.use(express.json({ limit: "15mb" }));
   const allowedOrigins = [
     "http://localhost:3000",
+    "http://127.0.0.1:3000",
     "http://localhost:5173",
+    "http://127.0.0.1:5173",
     process.env.APP_URL
   ].filter(Boolean);
-  app2.use(cors({
+  app2.use("/api", cors({
     origin: (origin, callback) => {
       if (!origin) return callback(null, true);
       if (allowedOrigins.includes(origin)) return callback(null, true);
