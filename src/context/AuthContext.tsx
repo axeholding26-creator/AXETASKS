@@ -11,7 +11,8 @@ interface AuthContextType {
   signup: (name: string, email: string, password: string) => Promise<void>;
   register: (email: string, password: string, name: string) => Promise<void>;
   logout: () => void;
-  updateProfile: (name: string, avatar_url?: string) => Promise<void>;
+  updateProfile: (name: string, email?: string) => Promise<void>;
+  changePassword: (currentPassword: string, newPassword: string) => Promise<void>;
   refreshUser: () => Promise<void>;
 }
 
@@ -94,9 +95,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     clearError();
   };
 
-  const updateProfile = async (name: string, avatar_url?: string) => {
-    const res = await api.updateProfile(name, avatar_url);
+  const updateProfile = async (name: string, email?: string) => {
+    const res = await api.updateProfile(name, email);
     setUser(res.user);
+  };
+
+  const changePassword = async (currentPassword: string, newPassword: string) => {
+    await api.changePassword(currentPassword, newPassword);
   };
 
   const refreshUser = async () => {
@@ -120,6 +125,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         register,
         logout,
         updateProfile,
+        changePassword,
         refreshUser,
       }}
     >

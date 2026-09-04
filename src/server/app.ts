@@ -203,15 +203,45 @@ export function createApp() {
 
   // Auth: Update Profile
   app.put('/api/auth/profile', authMiddleware, async (req: AuthenticatedRequest, res) => {
-    const { name, avatar_url } = req.body;
+    const { name, avatar_url, email } = req.body;
     if (!name) {
       return res.status(400).json({ error: 'Le nom ne peut pas être vide.' });
     }
     try {
-      const updated = await db.updateUserProfile(req.user!.id, { name, avatar_url });
+      if (email) {
+        const cleanEmail = email.trim().toLowerCase();
+        if (cleanEmail !== req.user!.email) {
+          const existing = await db.getUserByEmail(cleanEmail);
+          if (existing && existing.id !== req.user!.id) {
+            return res.status(400).json({ error: 'Un compte avec cette adresse email existe déjà.' });
+          }
+        }
+      }
+      const updated = await db.updateUserProfile(req.user!.id, { name, avatar_url, email });
       res.json({ user: updated });
     } catch (err: any) {
       res.status(500).json({ error: err.message || 'Erreur lors de la mise à jour du profil.' });
+    }
+  });
+
+  // Auth: Change Password
+  app.put('/api/auth/password', authMiddleware, async (req: AuthenticatedRequest, res) => {
+    const { current_password, new_password } = req.body;
+    if (!current_password || !new_password) {
+      return res.status(400).json({ error: 'Mot de passe actuel et nouveau mot de passe requis.' });
+    }
+    if (new_password.length < 6) {
+      return res.status(400).json({ error: 'Le nouveau mot de passe doit comporter au moins 6 caractères.' });
+    }
+    try {
+      const fullUser = await db.getUserById(req.user!.id);
+      if (!fullUser || !db.verifyPassword(current_password, fullUser.password_hash)) {
+        return res.status(401).json({ error: 'Mot de passe actuel incorrect.' });
+      }
+      await db.changeUserPassword(req.user!.id, new_password);
+      res.json({ success: true });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message || 'Erreur lors du changement de mot de passe.' });
     }
   });
 

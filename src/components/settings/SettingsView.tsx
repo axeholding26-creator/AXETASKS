@@ -39,7 +39,7 @@ const PRESET_COLORS = [
 ];
 
 export const SettingsView: React.FC = () => {
-  const { user } = useAuth();
+  const { user, updateProfile, changePassword } = useAuth();
   const { currentWorkspace, refreshWorkspaces } = useWorkspace();
   const { 
     notify, 
@@ -54,11 +54,26 @@ export const SettingsView: React.FC = () => {
   const isGlobalAdmin = user?.role === 'admin';
   const isWorkspaceAdmin = isGlobalAdmin || currentWorkspace?.my_role === 'admin';
 
-  const [activeTab, setActiveTab] = useState<'members' | 'tags' | 'workspace' | 'all_users' | 'notifications'>(
+  const [activeTab, setActiveTab] = useState<'profile' | 'members' | 'tags' | 'workspace' | 'all_users' | 'notifications'>(
     isGlobalAdmin ? 'all_users' : 'members'
   );
 
   const [lastPlayedSound, setLastPlayedSound] = useState<string>('');
+
+  // Personal profile state
+  const [profileName, setProfileName] = useState(user?.name || '');
+  const [profileEmail, setProfileEmail] = useState(user?.email || '');
+  const [isSavingProfile, setIsSavingProfile] = useState(false);
+  const [profileError, setProfileError] = useState('');
+  const [profileSuccess, setProfileSuccess] = useState('');
+
+  // Password change state
+  const [currentPassword, setCurrentPassword] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [isChangingPassword, setIsChangingPassword] = useState(false);
+  const [passwordError, setPasswordError] = useState('');
+  const [passwordSuccess, setPasswordSuccess] = useState('');
 
   // Members state
   const [members, setMembers] = useState<WorkspaceMember[]>([]);
@@ -132,6 +147,53 @@ export const SettingsView: React.FC = () => {
       loadAllUsers();
     }
   }, [isGlobalAdmin]);
+
+  // Save personal profile (name + email)
+  const handleSaveProfile = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setProfileError('');
+    setProfileSuccess('');
+    if (!profileName.trim() || !profileEmail.trim()) {
+      setProfileError('Le nom et l\'email ne peuvent pas être vides.');
+      return;
+    }
+    try {
+      setIsSavingProfile(true);
+      await updateProfile(profileName.trim(), profileEmail.trim());
+      setProfileSuccess('Vos informations ont été mises à jour.');
+    } catch (err: any) {
+      setProfileError(err.message || 'Erreur lors de la mise à jour du profil.');
+    } finally {
+      setIsSavingProfile(false);
+    }
+  };
+
+  // Change password
+  const handleChangePassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setPasswordError('');
+    setPasswordSuccess('');
+    if (newPassword.length < 6) {
+      setPasswordError('Le nouveau mot de passe doit comporter au moins 6 caractères.');
+      return;
+    }
+    if (newPassword !== confirmPassword) {
+      setPasswordError('Les deux mots de passe ne correspondent pas.');
+      return;
+    }
+    try {
+      setIsChangingPassword(true);
+      await changePassword(currentPassword, newPassword);
+      setPasswordSuccess('Votre mot de passe a été changé avec succès.');
+      setCurrentPassword('');
+      setNewPassword('');
+      setConfirmPassword('');
+    } catch (err: any) {
+      setPasswordError(err.message || 'Erreur lors du changement de mot de passe.');
+    } finally {
+      setIsChangingPassword(false);
+    }
+  };
 
   // Invite member to workspace
   const handleInviteMember = async (e: React.FormEvent) => {
@@ -296,13 +358,11 @@ export const SettingsView: React.FC = () => {
     u.email.toLowerCase().includes(userSearch.toLowerCase())
   );
 
-  if (!currentWorkspace) {
-    return (
-      <div className="p-12 text-center text-slate-400">
-        Veuillez sélectionner un espace de travail.
-      </div>
-    );
-  }
+  const noWorkspaceNotice = (
+    <div className="p-8 text-center text-slate-400 text-xs">
+      Veuillez sélectionner un espace de travail pour gérer ses membres, tags ou détails.
+    </div>
+  );
 
   return (
     <div className="p-5 max-w-5xl mx-auto space-y-5 animate-in fade-in duration-150 font-mono">
@@ -314,15 +374,27 @@ export const SettingsView: React.FC = () => {
           <span>Configuration & Gouvernance</span>
         </div>
         <h1 className="text-xl font-bold text-slate-100 uppercase tracking-tight">
-          Paramètres — {currentWorkspace.name}
+          {currentWorkspace ? `Paramètres — ${currentWorkspace.name}` : 'Paramètres'}
         </h1>
         <p className="text-xs text-slate-400 mt-0.5">
-          Gérez les profils utilisateurs, les accès collaborateurs, les rôles RBAC et les taxonomies.
+          Gérez votre profil, les accès collaborateurs, les rôles RBAC et les taxonomies.
         </p>
       </div>
 
       {/* Tabs Switcher */}
       <div className="flex items-center gap-1.5 border-b border-[#1E293B] pb-2 overflow-x-auto">
+        <button
+          onClick={() => setActiveTab('profile')}
+          className={`flex items-center gap-2 px-3 py-1.5 rounded text-xs font-bold transition-colors whitespace-nowrap ${
+            activeTab === 'profile'
+              ? 'bg-[#2563EB]/20 text-[#60A5FA] border border-[#2563EB]/40'
+              : 'text-slate-400 hover:text-slate-200'
+          }`}
+        >
+          <UserCheck className="w-3.5 h-3.5 text-[#3B82F6]" />
+          <span>Mon Profil</span>
+        </button>
+
         {isGlobalAdmin && (
           <button
             onClick={() => setActiveTab('all_users')}
@@ -361,7 +433,7 @@ export const SettingsView: React.FC = () => {
           <span>Tags & Labels ({tags.length})</span>
         </button>
 
-        {isWorkspaceAdmin && (
+        {isWorkspaceAdmin && currentWorkspace && (
           <button
             onClick={() => setActiveTab('workspace')}
             className={`flex items-center gap-2 px-3 py-1.5 rounded text-xs font-bold transition-colors whitespace-nowrap ${
@@ -387,6 +459,134 @@ export const SettingsView: React.FC = () => {
           <span>Sons & Alertes</span>
         </button>
       </div>
+
+      {/* TAB: MY PROFILE (everyone, no workspace required) */}
+      {activeTab === 'profile' && (
+        <div className="max-w-lg space-y-4">
+          {profileError && (
+            <div className="p-3 rounded bg-rose-500/10 border border-rose-500/30 text-rose-400 text-xs font-medium flex items-center justify-between">
+              <span>{profileError}</span>
+              <button onClick={() => setProfileError('')} className="text-rose-400 hover:text-white font-bold ml-2">×</button>
+            </div>
+          )}
+          {profileSuccess && (
+            <div className="p-3 rounded bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 text-xs font-medium flex items-center justify-between">
+              <span>{profileSuccess}</span>
+              <button onClick={() => setProfileSuccess('')} className="text-emerald-400 hover:text-white font-bold ml-2">×</button>
+            </div>
+          )}
+
+          <div className="p-4 rounded bg-[#0F172A] border border-[#1E293B] space-y-3.5">
+            <h3 className="text-xs font-bold text-slate-200 uppercase tracking-wide flex items-center gap-2">
+              <UserCheck className="w-4 h-4 text-[#3B82F6]" />
+              <span>Mes informations personnelles</span>
+            </h3>
+
+            <div className="flex items-center gap-3 pb-1">
+              <Avatar name={profileName || user?.name} avatarUrl={user?.avatar_url} size="lg" />
+            </div>
+
+            <form onSubmit={handleSaveProfile} className="space-y-3">
+              <div>
+                <label className="block text-[10px] font-bold uppercase text-slate-400 mb-1">Nom complet</label>
+                <input
+                  type="text"
+                  required
+                  value={profileName}
+                  onChange={e => setProfileName(e.target.value)}
+                  className="w-full px-3 py-1.5 rounded bg-[#090D16] border border-[#1E293B] text-xs text-slate-200 focus:outline-none focus:border-[#2563EB]/50"
+                />
+              </div>
+
+              <div>
+                <label className="block text-[10px] font-bold uppercase text-slate-400 mb-1">Adresse email</label>
+                <input
+                  type="email"
+                  required
+                  value={profileEmail}
+                  onChange={e => setProfileEmail(e.target.value)}
+                  className="w-full px-3 py-1.5 rounded bg-[#090D16] border border-[#1E293B] text-xs text-slate-200 focus:outline-none focus:border-[#2563EB]/50"
+                />
+              </div>
+
+              <div className="pt-1">
+                <button
+                  type="submit"
+                  disabled={isSavingProfile}
+                  className="px-4 py-1.5 rounded bg-[#2563EB] hover:bg-[#1D4ED8] text-white font-bold text-xs shadow-sm shadow-blue-500/25 transition-all disabled:opacity-60"
+                >
+                  {isSavingProfile ? 'Enregistrement...' : 'Enregistrer les modifications'}
+                </button>
+              </div>
+            </form>
+          </div>
+
+          <div className="p-4 rounded bg-[#0F172A] border border-[#1E293B] space-y-3.5">
+            <h3 className="text-xs font-bold text-slate-200 uppercase tracking-wide flex items-center gap-2">
+              <KeyRound className="w-4 h-4 text-[#3B82F6]" />
+              <span>Changer le mot de passe</span>
+            </h3>
+
+            {passwordError && (
+              <div className="p-2.5 rounded bg-rose-500/10 border border-rose-500/30 text-rose-400 text-xs font-medium">
+                {passwordError}
+              </div>
+            )}
+            {passwordSuccess && (
+              <div className="p-2.5 rounded bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 text-xs font-medium">
+                {passwordSuccess}
+              </div>
+            )}
+
+            <form onSubmit={handleChangePassword} className="space-y-3">
+              <div>
+                <label className="block text-[10px] font-bold uppercase text-slate-400 mb-1">Mot de passe actuel</label>
+                <input
+                  type="password"
+                  required
+                  value={currentPassword}
+                  onChange={e => setCurrentPassword(e.target.value)}
+                  className="w-full px-3 py-1.5 rounded bg-[#090D16] border border-[#1E293B] text-xs text-slate-200 focus:outline-none focus:border-[#2563EB]/50"
+                />
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-[10px] font-bold uppercase text-slate-400 mb-1">Nouveau mot de passe</label>
+                  <input
+                    type="password"
+                    required
+                    placeholder="6 caractères minimum"
+                    value={newPassword}
+                    onChange={e => setNewPassword(e.target.value)}
+                    className="w-full px-3 py-1.5 rounded bg-[#090D16] border border-[#1E293B] text-xs text-slate-200 placeholder-slate-500 focus:outline-none focus:border-[#2563EB]/50"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[10px] font-bold uppercase text-slate-400 mb-1">Confirmer</label>
+                  <input
+                    type="password"
+                    required
+                    value={confirmPassword}
+                    onChange={e => setConfirmPassword(e.target.value)}
+                    className="w-full px-3 py-1.5 rounded bg-[#090D16] border border-[#1E293B] text-xs text-slate-200 focus:outline-none focus:border-[#2563EB]/50"
+                  />
+                </div>
+              </div>
+
+              <div className="pt-1">
+                <button
+                  type="submit"
+                  disabled={isChangingPassword}
+                  className="px-4 py-1.5 rounded bg-[#2563EB] hover:bg-[#1D4ED8] text-white font-bold text-xs shadow-sm shadow-blue-500/25 transition-all disabled:opacity-60"
+                >
+                  {isChangingPassword ? 'Changement...' : 'Changer le mot de passe'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
 
       {/* TAB: GLOBAL USERS ADMINISTRATION (ADMIN ONLY) */}
       {activeTab === 'all_users' && isGlobalAdmin && (
@@ -577,7 +777,8 @@ export const SettingsView: React.FC = () => {
       )}
 
       {/* TAB: WORKSPACE MEMBERS MANAGEMENT */}
-      {activeTab === 'members' && (
+      {activeTab === 'members' && !currentWorkspace && noWorkspaceNotice}
+      {activeTab === 'members' && currentWorkspace && (
         <div className="space-y-4">
           {/* Invite Form Card (Admin Only) */}
           {isWorkspaceAdmin ? (
@@ -693,7 +894,8 @@ export const SettingsView: React.FC = () => {
       )}
 
       {/* TAB: TAGS MANAGEMENT */}
-      {activeTab === 'tags' && (
+      {activeTab === 'tags' && !currentWorkspace && noWorkspaceNotice}
+      {activeTab === 'tags' && currentWorkspace && (
         <div className="space-y-4">
           {/* Add Tag Card */}
           <div className="p-4 rounded bg-[#0F172A] border border-[#1E293B] space-y-2.5">
@@ -771,7 +973,7 @@ export const SettingsView: React.FC = () => {
       )}
 
       {/* TAB: WORKSPACE SETTINGS */}
-      {activeTab === 'workspace' && isWorkspaceAdmin && (
+      {activeTab === 'workspace' && isWorkspaceAdmin && currentWorkspace && (
         <>
           <form onSubmit={handleSaveWorkspace} className="space-y-4">
           <div className="p-4 rounded bg-[#0F172A] border border-[#1E293B] space-y-3.5">

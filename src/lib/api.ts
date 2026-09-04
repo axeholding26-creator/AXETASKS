@@ -80,10 +80,16 @@ export const api = {
 
   getMe: () => fetchWithAuth<{ user: User }>('/api/auth/me'),
 
-  updateProfile: (name: string, avatar_url?: string) =>
+  updateProfile: (name: string, email?: string) =>
     fetchWithAuth<{ user: User }>('/api/auth/profile', {
       method: 'PUT',
-      body: JSON.stringify({ name, avatar_url }),
+      body: JSON.stringify({ name, email }),
+    }),
+
+  changePassword: (current_password: string, new_password: string) =>
+    fetchWithAuth<{ success: boolean }>('/api/auth/password', {
+      method: 'PUT',
+      body: JSON.stringify({ current_password, new_password }),
     }),
 
   getUsers: () => fetchWithAuth<User[]>('/api/users'),

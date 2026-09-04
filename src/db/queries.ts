@@ -125,12 +125,13 @@ export async function createUser(email: string, password: string, name: string):
   }
 }
 
-export async function updateUserProfile(id: string, updates: { name?: string; avatar_url?: string }): Promise<User> {
+export async function updateUserProfile(id: string, updates: { name?: string; avatar_url?: string; email?: string }): Promise<User> {
   try {
     const [updated] = await db.update(schema.users)
       .set({
         ...(updates.name ? { name: updates.name } : {}),
         ...(updates.avatar_url !== undefined ? { avatar_url: updates.avatar_url } : {}),
+        ...(updates.email ? { email: updates.email.toLowerCase().trim() } : {}),
       })
       .where(eq(schema.users.id, id))
       .returning();
@@ -145,6 +146,18 @@ export async function updateUserProfile(id: string, updates: { name?: string; av
     };
   } catch (error) {
     console.error('Failed to update user profile:', error);
+    throw new Error('Database query failed. Please try again later.', { cause: error });
+  }
+}
+
+export async function changeUserPassword(id: string, newPassword: string): Promise<void> {
+  try {
+    const password_hash = hashPassword(newPassword);
+    await db.update(schema.users)
+      .set({ password_hash })
+      .where(eq(schema.users.id, id));
+  } catch (error) {
+    console.error('Failed to change user password:', error);
     throw new Error('Database query failed. Please try again later.', { cause: error });
   }
 }
