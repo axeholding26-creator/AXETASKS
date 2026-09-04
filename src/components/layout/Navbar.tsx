@@ -7,20 +7,17 @@ import { BrandLogo } from '../common/BrandLogo';
 import { NotificationsBell } from '../notifications/NotificationsBell';
 import { api } from '../../lib/api';
 import { User, Task } from '../../types';
-import { 
-  ChevronDown, 
-  Plus, 
-  Search, 
-  Play, 
-  Pause, 
-  Square, 
-  Sparkles, 
-  Check, 
-  LogOut, 
-  User as UserIcon, 
-  Settings, 
-  Layers, 
-  Clock, 
+import {
+  ChevronDown,
+  Plus,
+  Search,
+  Sparkles,
+  Check,
+  LogOut,
+  User as UserIcon,
+  Settings,
+  Layers,
+  Clock,
   FolderGit2,
   X,
   Menu
@@ -42,25 +39,18 @@ export const Navbar: React.FC<NavbarProps> = ({
   onMenuToggle,
 }) => {
   const { user, logout } = useAuth();
-  const { 
-    workspaces, 
-    currentWorkspace, 
+  const {
+    workspaces,
+    currentWorkspace,
     setCurrentWorkspaceId,
     setIsCreateTaskModalOpen,
     setIsCreateWorkspaceModalOpen,
-    activeTimer,
-    pauseTimer,
-    resumeTimer,
-    stopAndLogTimer,
-    discardTimer,
     setSelectedTaskId
   } = useWorkspace();
 
   const [isWorkspaceDropdownOpen, setIsWorkspaceDropdownOpen] = useState(false);
   const [isUserDropdownOpen, setIsUserDropdownOpen] = useState(false);
-  const [isTimerLogModalOpen, setIsTimerLogModalOpen] = useState(false);
-  const [timerNote, setTimerNote] = useState('');
-  
+
   // Quick Search
   const [searchQuery, setSearchQuery] = useState('');
   const [isSearchOpen, setIsSearchOpen] = useState(false);
@@ -84,29 +74,6 @@ export const Navbar: React.FC<NavbarProps> = ({
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
-
-  // Format stopwatch seconds — kept numeric/compact (not "1h 23m 45s") so the
-  // pill it sits in stays as narrow as possible on small screens.
-  const formatTimer = (seconds: number) => {
-    const hrs = Math.floor(seconds / 3600);
-    const mins = Math.floor((seconds % 3600) / 60);
-    const secs = seconds % 60;
-    if (hrs > 0) {
-      return `${hrs}:${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
-    }
-    return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
-  };
-
-  const handleStopTimerSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    try {
-      await stopAndLogTimer(timerNote);
-      setIsTimerLogModalOpen(false);
-      setTimerNote('');
-    } catch (err) {
-      console.error(err);
-    }
-  };
 
   // Keyboard shortcut Ctrl+K for search
   useEffect(() => {
@@ -238,18 +205,20 @@ export const Navbar: React.FC<NavbarProps> = ({
                 })}
               </div>
 
-              <div className="border-t border-[#1E293B] mt-1 pt-1 px-2">
-                <button
-                  onClick={() => {
-                    setIsWorkspaceDropdownOpen(false);
-                    setIsCreateWorkspaceModalOpen(true);
-                  }}
-                  className="w-full flex items-center gap-1.5 px-2 py-1.5 rounded text-xs font-mono text-[#60A5FA] hover:bg-[#2563EB]/15 transition-colors"
-                >
-                  <Plus className="w-3.5 h-3.5" />
-                  <span>Nouvel espace</span>
-                </button>
-              </div>
+              {user?.role === 'admin' && (
+                <div className="border-t border-[#1E293B] mt-1 pt-1 px-2">
+                  <button
+                    onClick={() => {
+                      setIsWorkspaceDropdownOpen(false);
+                      setIsCreateWorkspaceModalOpen(true);
+                    }}
+                    className="w-full flex items-center gap-1.5 px-2 py-1.5 rounded text-xs font-mono text-[#60A5FA] hover:bg-[#2563EB]/15 transition-colors"
+                  >
+                    <Plus className="w-3.5 h-3.5" />
+                    <span>Nouvel espace</span>
+                  </button>
+                </div>
+              )}
             </div>
           )}
         </div>
@@ -273,66 +242,11 @@ export const Navbar: React.FC<NavbarProps> = ({
         </button>
       </div>
 
-      {/* Right: Active Timer, Add Task, User Switcher — shrink-0 so the
-          search area (flex-1) is what gives up space when things are tight,
-          never these action controls. */}
+      {/* Right: Add Task, User Switcher — shrink-0 so the search area
+          (flex-1) is what gives up space when things are tight, never these
+          action controls. The personal work timer's controls live on the
+          task detail page now, not here. */}
       <div className="flex items-center gap-1.5 sm:gap-2.5 shrink-0">
-        {/* Active Timer — below `sm` this collapses to a single tappable
-            badge (opens the timer modal, which now also holds pause/resume/
-            cancel) instead of a row of icon buttons; at 320px wide, the full
-            inline pill plus the rest of the navbar's controls genuinely
-            don't fit, and no amount of padding-trimming closes that gap. */}
-        {activeTimer && (
-          <button
-            onClick={() => setIsTimerLogModalOpen(true)}
-            className="sm:hidden flex items-center gap-1.5 px-2 py-1 rounded bg-[#0F172A] border border-[#2563EB]/40 text-[#60A5FA] text-xs font-mono shadow-sm"
-          >
-            <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${activeTimer.isRunning ? 'bg-[#3B82F6] animate-pulse' : 'bg-slate-500'}`} />
-            <span className="font-bold tabular-nums">{formatTimer(activeTimer.elapsedSeconds)}</span>
-          </button>
-        )}
-        {activeTimer && (
-          <div className="hidden sm:flex items-center gap-1.5 px-2.5 py-1 rounded bg-[#0F172A] border border-[#2563EB]/40 text-[#60A5FA] text-xs font-mono shadow-sm">
-            <Clock className={`w-3.5 h-3.5 ${activeTimer.isRunning ? 'animate-pulse text-[#3B82F6]' : 'text-slate-400'}`} />
-            <span className="font-bold text-[#60A5FA] tabular-nums">
-              {formatTimer(activeTimer.elapsedSeconds)}
-            </span>
-            <div className="flex items-center gap-1 ml-1 border-l border-[#1E293B] pl-1.5">
-              {activeTimer.isRunning ? (
-                <button
-                  onClick={pauseTimer}
-                  title="Pause"
-                  className="p-1 hover:bg-[#1E293B] rounded text-[#60A5FA]"
-                >
-                  <Pause className="w-3 h-3" />
-                </button>
-              ) : (
-                <button
-                  onClick={resumeTimer}
-                  title="Reprendre"
-                  className="p-1 hover:bg-[#1E293B] rounded text-[#60A5FA]"
-                >
-                  <Play className="w-3 h-3" />
-                </button>
-              )}
-              <button
-                onClick={() => setIsTimerLogModalOpen(true)}
-                title="Arrêter et enregistrer"
-                className="p-1 hover:bg-emerald-950/40 rounded text-emerald-400"
-              >
-                <Square className="w-3 h-3" />
-              </button>
-              <button
-                onClick={discardTimer}
-                title="Annuler le chrono"
-                className="p-1 hover:bg-rose-950/40 rounded text-rose-400"
-              >
-                <X className="w-3 h-3" />
-              </button>
-            </div>
-          </div>
-        )}
-
         {/* Notifications */}
         <NotificationsBell onOpenWorkspaces={onOpenWorkspaces} />
 
@@ -494,98 +408,6 @@ export const Navbar: React.FC<NavbarProps> = ({
         </div>
       )}
 
-      {/* Stop Timer Modal */}
-      {isTimerLogModalOpen && activeTimer && (
-        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-[100] flex items-center justify-center p-4 overflow-y-auto">
-          <div className="bg-[#0F172A] border border-[#1E293B] rounded-lg w-full max-w-md p-5 shadow-2xl font-mono max-h-[calc(100dvh-2rem)] overflow-y-auto my-auto">
-            <h3 className="text-sm font-bold text-slate-100 mb-1">
-              Enregistrer le temps passé
-            </h3>
-            <p className="text-xs text-slate-400 mb-4">
-              Tâche : <span className="text-[#60A5FA] font-semibold">{activeTimer.taskTitle}</span>
-            </p>
-
-            <form onSubmit={handleStopTimerSubmit} className="space-y-4">
-              <div>
-                <label className="block text-[11px] font-bold text-slate-400 uppercase mb-1">
-                  Durée enregistrée
-                </label>
-                <div className="p-3 rounded bg-[#0B1120] border border-[#1E293B] text-center">
-                  <span className="font-mono text-2xl font-bold text-[#3B82F6]">
-                    {formatTimer(activeTimer.elapsedSeconds)}
-                  </span>
-                  <p className="text-[10px] text-slate-500 mt-0.5">
-                    (~{Math.max(1, Math.round(activeTimer.elapsedSeconds / 60))} minutes)
-                  </p>
-                </div>
-                {/* Pause/resume/discard — the compact mobile timer badge has
-                    no room for these inline, so they live here instead. */}
-                <div className="flex items-center justify-center gap-2 mt-2 sm:hidden">
-                  {activeTimer.isRunning ? (
-                    <button
-                      type="button"
-                      onClick={pauseTimer}
-                      className="flex items-center gap-1.5 px-3 py-1.5 rounded bg-[#1E293B] text-[#60A5FA] text-xs font-bold"
-                    >
-                      <Pause className="w-3.5 h-3.5" />
-                      <span>Pause</span>
-                    </button>
-                  ) : (
-                    <button
-                      type="button"
-                      onClick={resumeTimer}
-                      className="flex items-center gap-1.5 px-3 py-1.5 rounded bg-[#1E293B] text-[#60A5FA] text-xs font-bold"
-                    >
-                      <Play className="w-3.5 h-3.5" />
-                      <span>Reprendre</span>
-                    </button>
-                  )}
-                  <button
-                    type="button"
-                    onClick={() => {
-                      discardTimer();
-                      setIsTimerLogModalOpen(false);
-                    }}
-                    className="flex items-center gap-1.5 px-3 py-1.5 rounded bg-rose-950/40 text-rose-400 text-xs font-bold"
-                  >
-                    <X className="w-3.5 h-3.5" />
-                    <span>Annuler le chrono</span>
-                  </button>
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-[11px] font-bold text-slate-400 uppercase mb-1">
-                  Note d’activité (facultatif)
-                </label>
-                <textarea
-                  value={timerNote}
-                  onChange={e => setTimerNote(e.target.value)}
-                  placeholder="Ex : Revue de code, sprint planning..."
-                  rows={2}
-                  className="w-full px-3 py-1.5 rounded bg-[#0B1120] border border-[#1E293B] text-xs text-slate-200 placeholder-slate-500 focus:outline-none focus:border-[#2563EB]/60"
-                />
-              </div>
-
-              <div className="flex items-center justify-end gap-2.5 pt-2 border-t border-[#1E293B]">
-                <button
-                  type="button"
-                  onClick={() => setIsTimerLogModalOpen(false)}
-                  className="px-3 py-1.5 rounded text-xs text-slate-400 hover:bg-[#1E293B]"
-                >
-                  Annuler
-                </button>
-                <button
-                  type="submit"
-                  className="px-3 py-1.5 rounded bg-[#2563EB] hover:bg-[#1D4ED8] text-white font-bold text-xs shadow-sm shadow-blue-500/25"
-                >
-                  Enregistrer
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
     </header>
   );
 };

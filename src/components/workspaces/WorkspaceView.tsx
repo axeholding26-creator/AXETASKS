@@ -2,16 +2,17 @@ import React, { useState, useEffect } from 'react';
 import { useWorkspace } from '../../context/WorkspaceContext';
 import { useAuth } from '../../context/AuthContext';
 import { api } from '../../lib/api';
+import { resizeImageToDataUrl } from '../../lib/image';
 import { Project, WorkspaceMember } from '../../types';
 import { Avatar } from '../common/Avatar';
 import { ConfirmDialog, useConfirm } from '../common/ConfirmDialog';
 import { EditWorkspaceModal } from '../common/EditModal';
 import { 
-  FolderGit2, 
-  Plus, 
-  Users, 
-  Calendar, 
-  Clock, 
+  FolderGit2,
+  Plus,
+  Users,
+  Calendar,
+  Clock,
   ArrowRight, 
   CheckCircle2, 
   Briefcase, 
@@ -49,8 +50,25 @@ export const WorkspaceView: React.FC<WorkspaceViewProps> = ({
   const [members, setMembers] = useState<WorkspaceMember[]>([]);
   const [loading, setLoading] = useState(true);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+  const [isUploadingPhoto, setIsUploadingPhoto] = useState(false);
 
   const isWorkspaceAdmin = user?.role === 'admin' || currentWorkspace?.my_role === 'admin';
+
+  const handlePhotoChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file || !currentWorkspace) return;
+    try {
+      setIsUploadingPhoto(true);
+      const dataUrl = await resizeImageToDataUrl(file, 500, 0.85);
+      await api.updateWorkspace(currentWorkspace.id, { photo_url: dataUrl });
+      await refreshWorkspaces();
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setIsUploadingPhoto(false);
+    }
+  };
 
   const loadData = async () => {
     if (!currentWorkspace) return;
@@ -158,12 +176,36 @@ export const WorkspaceView: React.FC<WorkspaceViewProps> = ({
 
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-5 relative z-10">
           <div className="flex items-center gap-3.5">
-            <div
-              className="w-12 h-12 rounded flex items-center justify-center text-white shadow-sm"
-              style={{ backgroundColor: `${currentWorkspace.color}20`, border: `1px solid ${currentWorkspace.color}50` }}
-            >
-              <Briefcase className="w-6 h-6" style={{ color: currentWorkspace.color }} />
-            </div>
+            {isWorkspaceAdmin ? (
+              <label
+                className="relative w-16 h-16 rounded-lg flex items-center justify-center text-white shadow-sm overflow-hidden shrink-0 cursor-pointer group"
+                style={{ backgroundColor: `${currentWorkspace.color}20`, border: `1px solid ${currentWorkspace.color}50` }}
+                title="Modifier la photo de l'espace"
+              >
+                {currentWorkspace.photo_url ? (
+                  <img src={currentWorkspace.photo_url} alt={currentWorkspace.name} className="w-full h-full object-cover" />
+                ) : (
+                  <Briefcase className="w-7 h-7" style={{ color: currentWorkspace.color }} />
+                )}
+                <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity">
+                  <span className="text-[9px] font-bold text-white uppercase">
+                    {isUploadingPhoto ? '...' : 'Modifier'}
+                  </span>
+                </div>
+                <input type="file" accept="image/*" onChange={handlePhotoChange} disabled={isUploadingPhoto} className="hidden" />
+              </label>
+            ) : (
+              <div
+                className="w-16 h-16 rounded-lg flex items-center justify-center text-white shadow-sm overflow-hidden shrink-0"
+                style={{ backgroundColor: `${currentWorkspace.color}20`, border: `1px solid ${currentWorkspace.color}50` }}
+              >
+                {currentWorkspace.photo_url ? (
+                  <img src={currentWorkspace.photo_url} alt={currentWorkspace.name} className="w-full h-full object-cover" />
+                ) : (
+                  <Briefcase className="w-7 h-7" style={{ color: currentWorkspace.color }} />
+                )}
+              </div>
+            )}
 
             <div>
               <div className="flex items-center gap-2">
@@ -313,10 +355,10 @@ export const WorkspaceView: React.FC<WorkspaceViewProps> = ({
 
                 {/* Footer */}
                 <div className="pt-2.5 border-t border-[#1E293B] flex items-center justify-between text-xs">
-                  {prj.deadline ? (
+                  {prj.end_at ? (
                     <span className="flex items-center gap-1 text-slate-400 font-medium text-[11px]">
                       <Calendar className="w-3 h-3 text-slate-500" />
-                      {new Date(prj.deadline).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' })}
+                      {new Date(prj.end_at).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' })}
                     </span>
                   ) : (
                     <span className="text-slate-500 text-[11px]">Sans échéance</span>

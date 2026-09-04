@@ -7,20 +7,19 @@ import { StatusBadge, PriorityBadge } from '../common/Badge';
 import { Avatar } from '../common/Avatar';
 import { EditProjectModal } from '../common/EditModal';
 import confetti from 'canvas-confetti';
-import { 
-  Kanban as KanbanIcon, 
-  List, 
-  Plus, 
-  Search, 
-  Filter, 
-  Calendar, 
-  Clock, 
-  CheckSquare, 
-  Paperclip, 
-  MessageSquare, 
-  ArrowLeft, 
-  MoreVertical, 
-  Play, 
+import {
+  Kanban as KanbanIcon,
+  List,
+  Plus,
+  Search,
+  Filter,
+  Calendar,
+  Clock,
+  CheckSquare,
+  Paperclip,
+  MessageSquare,
+  ArrowLeft,
+  MoreVertical,
   Sparkles,
   Tag as TagIcon,
   Trash2,
@@ -48,8 +47,6 @@ export const ProjectView: React.FC<ProjectViewProps> = ({ onBackToWorkspace }) =
     currentWorkspace,
     setSelectedTaskId,
     setIsCreateTaskModalOpen,
-    startTimer,
-    activeTimer,
     taskVersion,
     bumpTaskVersion,
     bumpProjectVersion
@@ -99,12 +96,13 @@ export const ProjectView: React.FC<ProjectViewProps> = ({ onBackToWorkspace }) =
     }
   };
 
-  const handleSaveProject = async (data: { name: string; description: string; deadline: string; status: string }) => {
+  const handleSaveProject = async (data: { name: string; description: string; start_at?: string; end_at?: string; status: string }) => {
     if (!currentProject) return;
     await api.updateProject(currentProject.id, {
       name: data.name,
       description: data.description || undefined,
-      deadline: data.deadline || undefined,
+      start_at: data.start_at,
+      end_at: data.end_at,
       status: data.status as any,
     });
     // Refresh project data to reflect name change in header
@@ -227,7 +225,8 @@ export const ProjectView: React.FC<ProjectViewProps> = ({ onBackToWorkspace }) =
           isOpen={isEditProjectOpen}
           initialName={currentProject.name}
           initialDescription={currentProject.description || ''}
-          initialDeadline={currentProject.deadline || ''}
+          initialStartAt={currentProject.start_at || null}
+          initialEndAt={currentProject.end_at || null}
           initialStatus={currentProject.status}
           onSave={handleSaveProject}
           onClose={() => setIsEditProjectOpen(false)}
@@ -510,10 +509,10 @@ export const ProjectView: React.FC<ProjectViewProps> = ({ onBackToWorkspace }) =
                           <div className="flex items-center gap-1.5">
                             <PriorityBadge priority={task.priority} size="sm" showLabel={false} />
 
-                            {task.due_date && (
+                            {task.end_at && (
                               <span className="flex items-center gap-1 text-slate-400 font-medium">
                                 <Calendar className="w-3 h-3 text-slate-500" />
-                                {new Date(task.due_date).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' })}
+                                {new Date(task.end_at).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' })}
                               </span>
                             )}
 
@@ -562,8 +561,7 @@ export const ProjectView: React.FC<ProjectViewProps> = ({ onBackToWorkspace }) =
                   <th className="p-3">Assigné</th>
                   <th className="p-3">Échéance</th>
                   <th className="p-3">Sous-tâches</th>
-                  <th className="p-3">Temps loggé</th>
-                  <th className="p-3 pr-4 text-right">Actions</th>
+                  <th className="p-3 pr-4">Temps loggé</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-[#1E293B]">
@@ -610,8 +608,8 @@ export const ProjectView: React.FC<ProjectViewProps> = ({ onBackToWorkspace }) =
                       </td>
 
                       <td className="p-3 text-slate-400 font-medium">
-                        {task.due_date ? (
-                          new Date(task.due_date).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' })
+                        {task.end_at ? (
+                          new Date(task.end_at).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' })
                         ) : (
                           <span className="text-slate-600">—</span>
                         )}
@@ -621,18 +619,8 @@ export const ProjectView: React.FC<ProjectViewProps> = ({ onBackToWorkspace }) =
                         {totalSubtasks > 0 ? `${subtasksDone}/${totalSubtasks}` : '—'}
                       </td>
 
-                      <td className="p-3 font-mono text-[#60A5FA] font-semibold">
+                      <td className="p-3 pr-4 font-mono text-[#60A5FA] font-semibold">
                         {task.total_time_minutes ? `${Math.floor(task.total_time_minutes / 60)}h ${task.total_time_minutes % 60}m` : '0m'}
-                      </td>
-
-                      <td className="p-3 pr-4 text-right" onClick={e => e.stopPropagation()}>
-                        <button
-                          onClick={() => startTimer(task)}
-                          title="Chronométrer"
-                          className="p-1 rounded bg-[#0B1120] text-slate-400 hover:text-[#60A5FA] hover:bg-[#1E293B] border border-[#1E293B] transition-colors"
-                        >
-                          <Play className="w-3 h-3" />
-                        </button>
                       </td>
                     </tr>
                   );
@@ -640,7 +628,7 @@ export const ProjectView: React.FC<ProjectViewProps> = ({ onBackToWorkspace }) =
 
                 {filteredTasks.length === 0 && (
                   <tr>
-                    <td colSpan={8} className="p-8 text-center text-slate-500">
+                    <td colSpan={7} className="p-8 text-center text-slate-500">
                       Aucune tâche ne correspond aux critères sélectionnés.
                     </td>
                   </tr>

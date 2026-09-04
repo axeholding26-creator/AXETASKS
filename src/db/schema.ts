@@ -1,6 +1,12 @@
 import { relations } from 'drizzle-orm';
 import { pgTable, text, integer, boolean, timestamp } from 'drizzle-orm/pg-core';
 
+export const jobFunctions = pgTable('job_functions', {
+  id: text('id').primaryKey(),
+  name: text('name').notNull(),
+  created_at: timestamp('created_at').defaultNow(),
+});
+
 export const users = pgTable('users', {
   id: text('id').primaryKey(),
   uid: text('uid').notNull().unique(),
@@ -9,6 +15,8 @@ export const users = pgTable('users', {
   role: text('role').notNull().default('member'), // 'admin' | 'member'
   avatar_url: text('avatar_url'),
   password_hash: text('password_hash'),
+  function_id: text('function_id').references(() => jobFunctions.id, { onDelete: 'set null' }),
+  last_seen_at: timestamp('last_seen_at'),
   created_at: timestamp('created_at').defaultNow(),
 });
 
@@ -17,6 +25,7 @@ export const workspaces = pgTable('workspaces', {
   name: text('name').notNull(),
   color: text('color').notNull().default('#2563EB'),
   icon: text('icon').notNull().default('Briefcase'),
+  photo_url: text('photo_url'),
   created_by: text('created_by').references(() => users.id),
   created_at: timestamp('created_at').defaultNow(),
 });
@@ -35,8 +44,19 @@ export const projects = pgTable('projects', {
   name: text('name').notNull(),
   description: text('description'),
   status: text('status').notNull().default('en_cours'),
-  deadline: text('deadline'),
+  start_at: timestamp('start_at'),
+  end_at: timestamp('end_at'),
+  completed_at: timestamp('completed_at'),
+  stopped_at: timestamp('stopped_at'),
+  created_by: text('created_by').references(() => users.id, { onDelete: 'set null' }),
   created_at: timestamp('created_at').defaultNow(),
+});
+
+export const projectMembers = pgTable('project_members', {
+  id: text('id').primaryKey(),
+  project_id: text('project_id').notNull().references(() => projects.id, { onDelete: 'cascade' }),
+  user_id: text('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  added_at: timestamp('added_at').defaultNow(),
 });
 
 export const tags = pgTable('tags', {
@@ -54,7 +74,11 @@ export const tasks = pgTable('tasks', {
   status: text('status').notNull().default('a_faire'),
   priority: text('priority').notNull().default('normale'),
   assignee_id: text('assignee_id').references(() => users.id, { onDelete: 'set null' }),
-  due_date: text('due_date'),
+  start_at: timestamp('start_at'),
+  end_at: timestamp('end_at'),
+  completed_at: timestamp('completed_at'),
+  stopped_at: timestamp('stopped_at'),
+  estimated_minutes: integer('estimated_minutes'),
   position: integer('position').default(0),
   created_by: text('created_by').references(() => users.id),
   created_at: timestamp('created_at').defaultNow(),
@@ -124,6 +148,7 @@ export const messages = pgTable('messages', {
   conversation_id: text('conversation_id').notNull().references(() => conversations.id, { onDelete: 'cascade' }),
   sender_id: text('sender_id').notNull().references(() => users.id),
   content: text('content').notNull(),
+  reply_to_id: text('reply_to_id').references((): any => messages.id, { onDelete: 'set null' }),
   created_at: timestamp('created_at').defaultNow(),
 });
 
@@ -141,12 +166,20 @@ export const notifications = pgTable('notifications', {
 });
 
 // Relationships
-export const usersRelations = relations(users, ({ many }) => ({
+export const jobFunctionsRelations = relations(jobFunctions, ({ many }) => ({
+  users: many(users),
+}));
+
+export const usersRelations = relations(users, ({ one, many }) => ({
   workspacesCreated: many(workspaces),
   workspaceMemberships: many(workspaceMembers),
   assignedTasks: many(tasks),
   comments: many(comments),
   timeEntries: many(timeEntries),
+  jobFunction: one(jobFunctions, {
+    fields: [users.function_id],
+    references: [jobFunctions.id],
+  }),
 }));
 
 export const workspacesRelations = relations(workspaces, ({ one, many }) => ({

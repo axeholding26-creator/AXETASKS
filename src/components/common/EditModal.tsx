@@ -1,5 +1,7 @@
 import React, { useEffect, useRef } from 'react';
 import { X, Save } from 'lucide-react';
+import { combineDateAndTime, splitISOToDateAndTime } from '../../lib/datetime';
+import { CalendarPicker } from './CalendarPicker';
 
 const PRESET_COLORS = [
   '#2563EB', '#3B82F6', '#60A5FA', '#10B981', '#F59E0B',
@@ -159,9 +161,10 @@ interface EditProjectModalProps {
   isOpen: boolean;
   initialName: string;
   initialDescription: string;
-  initialDeadline: string;
+  initialStartAt: string | null;
+  initialEndAt: string | null;
   initialStatus: 'active' | 'archived' | 'planned' | 'completed';
-  onSave: (data: { name: string; description: string; deadline: string; status: string }) => Promise<void>;
+  onSave: (data: { name: string; description: string; start_at?: string; end_at?: string; status: string }) => Promise<void>;
   onClose: () => void;
 }
 
@@ -169,14 +172,20 @@ export const EditProjectModal: React.FC<EditProjectModalProps> = ({
   isOpen,
   initialName,
   initialDescription,
-  initialDeadline,
+  initialStartAt,
+  initialEndAt,
   initialStatus,
   onSave,
   onClose,
 }) => {
   const [name, setName] = React.useState(initialName);
   const [description, setDescription] = React.useState(initialDescription);
-  const [deadline, setDeadline] = React.useState(initialDeadline);
+  const initialStart = splitISOToDateAndTime(initialStartAt);
+  const initialEnd = splitISOToDateAndTime(initialEndAt);
+  const [startDate, setStartDate] = React.useState(initialStart.date);
+  const [startTime, setStartTime] = React.useState(initialStart.time || '09:00');
+  const [endDate, setEndDate] = React.useState(initialEnd.date);
+  const [endTime, setEndTime] = React.useState(initialEnd.time || '18:00');
   const [status, setStatus] = React.useState(initialStatus);
   const [loading, setLoading] = React.useState(false);
   const [error, setError] = React.useState('');
@@ -186,12 +195,17 @@ export const EditProjectModal: React.FC<EditProjectModalProps> = ({
     if (isOpen) {
       setName(initialName);
       setDescription(initialDescription);
-      setDeadline(initialDeadline);
+      const s = splitISOToDateAndTime(initialStartAt);
+      const en = splitISOToDateAndTime(initialEndAt);
+      setStartDate(s.date);
+      setStartTime(s.time || '09:00');
+      setEndDate(en.date);
+      setEndTime(en.time || '18:00');
       setStatus(initialStatus);
       setError('');
       setTimeout(() => inputRef.current?.focus(), 50);
     }
-  }, [isOpen, initialName, initialDescription, initialDeadline, initialStatus]);
+  }, [isOpen, initialName, initialDescription, initialStartAt, initialEndAt, initialStatus]);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -208,7 +222,13 @@ export const EditProjectModal: React.FC<EditProjectModalProps> = ({
     setLoading(true);
     setError('');
     try {
-      await onSave({ name: name.trim(), description: description.trim(), deadline, status });
+      await onSave({
+        name: name.trim(),
+        description: description.trim(),
+        start_at: combineDateAndTime(startDate, startTime),
+        end_at: combineDateAndTime(endDate, endTime),
+        status,
+      });
       onClose();
     } catch (err: any) {
       setError(err.message || 'Erreur lors de la sauvegarde.');
@@ -269,34 +289,52 @@ export const EditProjectModal: React.FC<EditProjectModalProps> = ({
             />
           </div>
 
-          {/* Status + Deadline row */}
+          {/* Status */}
+          <div>
+            <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1.5">
+              Statut
+            </label>
+            <select
+              value={status}
+              onChange={e => setStatus(e.target.value as any)}
+              className="w-full px-2.5 py-2 rounded bg-[#090D16] border border-[#1E293B] text-xs font-semibold text-slate-200 focus:outline-none focus:border-[#2563EB]/60 cursor-pointer transition-colors"
+            >
+              <option value="planned">Planifié</option>
+              <option value="active">Actif</option>
+              <option value="completed">Terminé</option>
+              <option value="archived">Archivé</option>
+            </select>
+          </div>
+
+          {/* Start / End date & time — chrono schedule (admin only) */}
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1.5">
-                Statut
+                Début (date et heure)
               </label>
-              <select
-                value={status}
-                onChange={e => setStatus(e.target.value as any)}
-                className="w-full px-2.5 py-2 rounded bg-[#090D16] border border-[#1E293B] text-xs font-semibold text-slate-200 focus:outline-none focus:border-[#2563EB]/60 cursor-pointer transition-colors"
-              >
-                <option value="planned">Planifié</option>
-                <option value="active">Actif</option>
-                <option value="completed">Terminé</option>
-                <option value="archived">Archivé</option>
-              </select>
+              <div className="space-y-1.5">
+                <CalendarPicker value={startDate} onChange={setStartDate} placeholder="Date de début" />
+                <input
+                  type="time"
+                  value={startTime}
+                  onChange={e => setStartTime(e.target.value)}
+                  className="w-full px-2.5 py-1.5 rounded bg-[#090D16] border border-[#1E293B] text-xs text-slate-200 focus:outline-none focus:border-[#2563EB]/60"
+                />
+              </div>
             </div>
-
             <div>
               <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1.5">
-                Échéance
+                Fin (date et heure)
               </label>
-              <input
-                type="date"
-                value={deadline}
-                onChange={e => setDeadline(e.target.value)}
-                className="w-full px-2.5 py-1.5 rounded bg-[#090D16] border border-[#1E293B] text-xs text-slate-200 focus:outline-none focus:border-[#2563EB]/60 cursor-pointer transition-colors"
-              />
+              <div className="space-y-1.5">
+                <CalendarPicker value={endDate} onChange={setEndDate} placeholder="Date de fin" />
+                <input
+                  type="time"
+                  value={endTime}
+                  onChange={e => setEndTime(e.target.value)}
+                  className="w-full px-2.5 py-1.5 rounded bg-[#090D16] border border-[#1E293B] text-xs text-slate-200 focus:outline-none focus:border-[#2563EB]/60"
+                />
+              </div>
             </div>
           </div>
 

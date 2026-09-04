@@ -58,10 +58,10 @@ export const ToastProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
     setToasts((prev) => [...prev.slice(-4), newToast]);
 
-    // Auto-dismiss after 4 seconds
+    // Auto-dismiss after 3 seconds
     setTimeout(() => {
       removeToast(id);
-    }, 4000);
+    }, 3000);
   }, [removeToast]);
 
   const toggleSound = (enabled: boolean) => {

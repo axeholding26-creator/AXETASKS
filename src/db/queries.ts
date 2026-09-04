@@ -7,6 +7,7 @@ import {
   User,
   Workspace,
   WorkspaceMember,
+  ProjectMember,
   Project,
   Task,
   Subtask,
@@ -20,7 +21,10 @@ import {
   Conversation,
   Message,
   AppNotification,
-  NotificationType
+  NotificationType,
+  TimeAllocationTask,
+  TimeAllocationProject,
+  TimeAllocationWorkspace
 } from '../types.ts';
 
 function generateId(prefix: string = ''): string {
@@ -60,8 +64,12 @@ export async function getAllUsers(): Promise<User[]> {
       name: schema.users.name,
       role: schema.users.role,
       avatar_url: schema.users.avatar_url,
+      function_id: schema.users.function_id,
+      last_seen_at: schema.users.last_seen_at,
       created_at: schema.users.created_at,
     }).from(schema.users);
+
+    const functions = await db.select().from(schema.jobFunctions);
 
     return rows.map(r => ({
       id: r.id,
@@ -69,6 +77,9 @@ export async function getAllUsers(): Promise<User[]> {
       name: r.name,
       role: r.role as 'admin' | 'member',
       avatar_url: r.avatar_url || undefined,
+      function_id: r.function_id,
+      job_function: r.function_id ? functions.find(f => f.id === r.function_id) || null : null,
+      last_seen_at: r.last_seen_at ? r.last_seen_at.toISOString() : null,
       created_at: r.created_at ? r.created_at.toISOString() : undefined,
     }));
   } catch (error) {
@@ -183,7 +194,7 @@ export async function updateUserRole(id: string, role: 'admin' | 'member'): Prom
   }
 }
 
-export async function createUserWithRole(email: string, password: string, name: string, role: 'admin' | 'member' = 'member'): Promise<User> {
+export async function createUserWithRole(email: string, password: string, name: string, role: 'admin' | 'member' = 'member', functionId?: string | null): Promise<User> {
   try {
     const id = generateId('usr');
     const password_hash = hashPassword(password);
@@ -193,9 +204,14 @@ export async function createUserWithRole(email: string, password: string, name: 
       email: email.toLowerCase().trim(),
       name,
       role,
+      function_id: functionId || null,
       avatar_url: `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(name)}&backgroundColor=2563EB`,
       password_hash,
     }).returning();
+
+    const jobFunction = created.function_id
+      ? (await db.select().from(schema.jobFunctions).where(eq(schema.jobFunctions.id, created.function_id)).limit(1))[0]
+      : undefined;
 
     return {
       id: created.id,
@@ -203,6 +219,8 @@ export async function createUserWithRole(email: string, password: string, name: 
       name: created.name,
       role: created.role as 'admin' | 'member',
       avatar_url: created.avatar_url || undefined,
+      function_id: created.function_id,
+      job_function: jobFunction ? { id: jobFunction.id, name: jobFunction.name } : null,
       created_at: created.created_at ? created.created_at.toISOString() : undefined,
     };
   } catch (error) {
@@ -253,6 +271,71 @@ export async function deleteUser(id: string): Promise<boolean> {
   }
 }
 
+export async function touchUserLastSeen(userId: string): Promise<void> {
+  try {
+    await db.update(schema.users).set({ last_seen_at: new Date() }).where(eq(schema.users.id, userId));
+  } catch (error) {
+    console.error('Failed to touch user last_seen_at:', error);
+  }
+}
+
+// ----------------- JOB FUNCTIONS -----------------
+
+export async function getJobFunctions(): Promise<{ id: string; name: string }[]> {
+  try {
+    const rows = await db.select().from(schema.jobFunctions).orderBy(asc(schema.jobFunctions.created_at));
+    return rows.map(r => ({ id: r.id, name: r.name }));
+  } catch (error) {
+    console.error('Failed to get job functions:', error);
+    throw new Error('Database query failed. Please try again later.', { cause: error });
+  }
+}
+
+export async function createJobFunction(name: string): Promise<{ id: string; name: string }> {
+  try {
+    const [created] = await db.insert(schema.jobFunctions).values({ id: generateId('jf'), name }).returning();
+    return { id: created.id, name: created.name };
+  } catch (error) {
+    console.error('Failed to create job function:', error);
+    throw new Error('Database query failed. Please try again later.', { cause: error });
+  }
+}
+
+export async function deleteJobFunction(id: string): Promise<boolean> {
+  try {
+    await db.delete(schema.jobFunctions).where(eq(schema.jobFunctions.id, id));
+    return true;
+  } catch (error) {
+    console.error('Failed to delete job function:', error);
+    throw new Error('Database query failed. Please try again later.', { cause: error });
+  }
+}
+
+export async function setUserFunction(userId: string, functionId: string | null): Promise<User> {
+  try {
+    const [updated] = await db.update(schema.users)
+      .set({ function_id: functionId })
+      .where(eq(schema.users.id, userId))
+      .returning();
+
+    const functions = functionId ? await db.select().from(schema.jobFunctions).where(eq(schema.jobFunctions.id, functionId)).limit(1) : [];
+
+    return {
+      id: updated.id,
+      email: updated.email,
+      name: updated.name,
+      role: updated.role as 'admin' | 'member',
+      avatar_url: updated.avatar_url || undefined,
+      function_id: updated.function_id,
+      job_function: functions[0] ? { id: functions[0].id, name: functions[0].name } : null,
+      created_at: updated.created_at ? updated.created_at.toISOString() : undefined,
+    };
+  } catch (error) {
+    console.error('Failed to set user function:', error);
+    throw new Error('Database query failed. Please try again later.', { cause: error });
+  }
+}
+
 // ----------------- WORKSPACES -----------------
 
 export async function getUserWorkspaces(userId: string, isGlobalAdmin: boolean = false): Promise<Workspace[]> {
@@ -288,6 +371,7 @@ export async function getUserWorkspaces(userId: string, isGlobalAdmin: boolean =
         name: ws.name,
         color: ws.color,
         icon: ws.icon,
+        photo_url: ws.photo_url,
         created_at: ws.created_at ? ws.created_at.toISOString() : new Date().toISOString(),
         member_count: wsMembers.length,
         projects_count: wsProjects.length,
@@ -313,6 +397,7 @@ export async function getWorkspaceById(id: string): Promise<Workspace | null> {
       name: ws.name,
       color: ws.color,
       icon: ws.icon,
+      photo_url: ws.photo_url,
       created_at: ws.created_at ? ws.created_at.toISOString() : new Date().toISOString(),
     };
   } catch (error) {
@@ -321,7 +406,7 @@ export async function getWorkspaceById(id: string): Promise<Workspace | null> {
   }
 }
 
-export async function createWorkspace(name: string, color: string = '#2563EB', icon: string = 'Briefcase', creatorId: string): Promise<Workspace> {
+export async function createWorkspace(name: string, color: string = '#2563EB', icon: string = 'Briefcase', creatorId: string, photoUrl?: string): Promise<Workspace> {
   try {
     const id = generateId('ws');
     const [ws] = await db.insert(schema.workspaces).values({
@@ -329,6 +414,7 @@ export async function createWorkspace(name: string, color: string = '#2563EB', i
       name,
       color,
       icon,
+      photo_url: photoUrl || null,
       created_by: creatorId,
     }).returning();
 
@@ -345,6 +431,7 @@ export async function createWorkspace(name: string, color: string = '#2563EB', i
       name: ws.name,
       color: ws.color,
       icon: ws.icon,
+      photo_url: ws.photo_url,
       created_at: ws.created_at ? ws.created_at.toISOString() : new Date().toISOString(),
       member_count: 1,
       projects_count: 0,
@@ -359,13 +446,14 @@ export async function createWorkspace(name: string, color: string = '#2563EB', i
   }
 }
 
-export async function updateWorkspace(id: string, updates: Partial<{ name: string; color: string; icon: string }>): Promise<Workspace | null> {
+export async function updateWorkspace(id: string, updates: Partial<{ name: string; color: string; icon: string; photo_url: string | null }>): Promise<Workspace | null> {
   try {
     const [updated] = await db.update(schema.workspaces)
       .set({
         ...(updates.name ? { name: updates.name } : {}),
         ...(updates.color ? { color: updates.color } : {}),
         ...(updates.icon ? { icon: updates.icon } : {}),
+        ...(updates.photo_url !== undefined ? { photo_url: updates.photo_url } : {}),
       })
       .where(eq(schema.workspaces.id, id))
       .returning();
@@ -376,6 +464,7 @@ export async function updateWorkspace(id: string, updates: Partial<{ name: strin
       name: updated.name,
       color: updated.color,
       icon: updated.icon,
+      photo_url: updated.photo_url,
       created_at: updated.created_at ? updated.created_at.toISOString() : new Date().toISOString(),
     };
   } catch (error) {
@@ -533,6 +622,20 @@ export async function removeWorkspaceMember(workspaceId: string, userId: string)
   }
 }
 
+export async function getWorkspaceMemberById(memberId: string): Promise<{ id: string; workspace_id: string; user_id: string } | null> {
+  try {
+    const rows = await db.select({
+      id: schema.workspaceMembers.id,
+      workspace_id: schema.workspaceMembers.workspace_id,
+      user_id: schema.workspaceMembers.user_id,
+    }).from(schema.workspaceMembers).where(eq(schema.workspaceMembers.id, memberId)).limit(1);
+    return rows[0] || null;
+  } catch (error) {
+    console.error('Failed to get workspace member by id:', error);
+    throw new Error('Database query failed. Please try again later.', { cause: error });
+  }
+}
+
 export async function updateWorkspaceMemberById(memberId: string, role: 'admin' | 'member'): Promise<WorkspaceMember | null> {
   try {
     const [updated] = await db.update(schema.workspaceMembers)
@@ -598,7 +701,11 @@ export async function getWorkspaceProjects(workspaceId: string): Promise<Project
         name: p.name,
         description: p.description || undefined,
         status: p.status as 'active' | 'archived' | 'planned' | 'completed',
-        deadline: p.deadline || undefined,
+        start_at: p.start_at ? p.start_at.toISOString() : null,
+        end_at: p.end_at ? p.end_at.toISOString() : null,
+        completed_at: p.completed_at ? p.completed_at.toISOString() : null,
+        stopped_at: p.stopped_at ? p.stopped_at.toISOString() : null,
+        created_by: p.created_by,
         created_at: p.created_at ? p.created_at.toISOString() : new Date().toISOString(),
         tasks_count: pTasks.length,
         active_tasks_count: pTasks.filter(t => t.status !== 'termine').length,
@@ -608,6 +715,7 @@ export async function getWorkspaceProjects(workspaceId: string): Promise<Project
           name: ws.name,
           color: ws.color,
           icon: ws.icon,
+          photo_url: ws.photo_url,
           created_at: ws.created_at ? ws.created_at.toISOString() : new Date().toISOString(),
         } : undefined,
       };
@@ -632,7 +740,11 @@ export async function getProjectById(id: string): Promise<Project | null> {
       name: p.name,
       description: p.description || undefined,
       status: p.status as 'active' | 'archived' | 'planned' | 'completed',
-      deadline: p.deadline || undefined,
+      start_at: p.start_at ? p.start_at.toISOString() : null,
+      end_at: p.end_at ? p.end_at.toISOString() : null,
+      completed_at: p.completed_at ? p.completed_at.toISOString() : null,
+      stopped_at: p.stopped_at ? p.stopped_at.toISOString() : null,
+      created_by: p.created_by,
       created_at: p.created_at ? p.created_at.toISOString() : new Date().toISOString(),
       tasks_count: pTasks.length,
       active_tasks_count: pTasks.filter(t => t.status !== 'termine').length,
@@ -642,6 +754,7 @@ export async function getProjectById(id: string): Promise<Project | null> {
         name: ws.name,
         color: ws.color,
         icon: ws.icon,
+        photo_url: ws.photo_url,
         created_at: ws.created_at ? ws.created_at.toISOString() : new Date().toISOString(),
       } : undefined,
     };
@@ -651,7 +764,15 @@ export async function getProjectById(id: string): Promise<Project | null> {
   }
 }
 
-export async function createProject(workspaceId: string, name: string, description?: string, deadline?: string, status: string = 'en_cours'): Promise<Project> {
+export async function createProject(
+  workspaceId: string,
+  name: string,
+  description?: string,
+  start_at?: string,
+  end_at?: string,
+  status: string = 'en_cours',
+  createdBy?: string
+): Promise<Project> {
   try {
     const id = generateId('prj');
     const [created] = await db.insert(schema.projects).values({
@@ -659,8 +780,10 @@ export async function createProject(workspaceId: string, name: string, descripti
       workspace_id: workspaceId,
       name,
       description,
-      deadline,
+      start_at: start_at ? new Date(start_at) : undefined,
+      end_at: end_at ? new Date(end_at) : undefined,
       status,
+      created_by: createdBy,
     }).returning();
 
     return {
@@ -669,7 +792,11 @@ export async function createProject(workspaceId: string, name: string, descripti
       name: created.name,
       description: created.description || undefined,
       status: created.status as 'active' | 'archived' | 'planned' | 'completed',
-      deadline: created.deadline || undefined,
+      start_at: created.start_at ? created.start_at.toISOString() : null,
+      end_at: created.end_at ? created.end_at.toISOString() : null,
+      completed_at: null,
+      stopped_at: null,
+      created_by: created.created_by,
       created_at: created.created_at ? created.created_at.toISOString() : new Date().toISOString(),
       tasks_count: 0,
       active_tasks_count: 0,
@@ -681,14 +808,16 @@ export async function createProject(workspaceId: string, name: string, descripti
   }
 }
 
-export async function updateProject(id: string, updates: Partial<{ name: string; description: string; status: string; deadline: string }>): Promise<Project | null> {
+export async function updateProject(id: string, updates: Partial<{ name: string; description: string; status: string; start_at: string | null; end_at: string | null; stopped_at: string | null }>): Promise<Project | null> {
   try {
     const [updated] = await db.update(schema.projects)
       .set({
         ...(updates.name ? { name: updates.name } : {}),
         ...(updates.description !== undefined ? { description: updates.description } : {}),
         ...(updates.status ? { status: updates.status } : {}),
-        ...(updates.deadline !== undefined ? { deadline: updates.deadline } : {}),
+        ...(updates.start_at !== undefined ? { start_at: updates.start_at ? new Date(updates.start_at) : null } : {}),
+        ...(updates.end_at !== undefined ? { end_at: updates.end_at ? new Date(updates.end_at) : null } : {}),
+        ...(updates.stopped_at !== undefined ? { stopped_at: updates.stopped_at ? new Date(updates.stopped_at) : null } : {}),
       })
       .where(eq(schema.projects.id, id))
       .returning();
@@ -701,12 +830,141 @@ export async function updateProject(id: string, updates: Partial<{ name: string;
   }
 }
 
+// Recomputes whether a project should be marked completed (all its tasks are
+// 'termine') or reopened (a task was moved back out of 'termine' after the
+// project had been marked complete). Called after any task status
+// change/create/delete. Fires the project_completed / project_playbook_reminder
+// notifications the first time a project newly becomes complete.
+export async function recalcProjectCompletion(projectId: string): Promise<void> {
+  try {
+    const [project] = await db.select().from(schema.projects).where(eq(schema.projects.id, projectId)).limit(1);
+    if (!project) return;
+
+    const projectTasks = await db.select().from(schema.tasks).where(eq(schema.tasks.project_id, projectId));
+    const allDone = projectTasks.length > 0 && projectTasks.every(t => t.status === 'termine');
+
+    if (allDone && !project.completed_at) {
+      await db.update(schema.projects).set({ completed_at: new Date() }).where(eq(schema.projects.id, projectId));
+
+      const recipients = new Set<string>();
+      if (project.created_by) {
+        recipients.add(project.created_by);
+      } else {
+        const admins = await db.select().from(schema.workspaceMembers)
+          .where(and(eq(schema.workspaceMembers.workspace_id, project.workspace_id), eq(schema.workspaceMembers.role, 'admin')));
+        admins.forEach(a => recipients.add(a.user_id));
+      }
+      for (const recipientId of recipients) {
+        await createNotification({
+          user_id: recipientId,
+          type: 'project_completed',
+          title: 'Projet terminé',
+          message: `Le projet "${project.name}" est terminé : toutes ses tâches sont passées à "Terminé".`,
+          workspace_id: project.workspace_id,
+        }).catch(err => console.error('Failed to create project_completed notification:', err));
+      }
+
+      const assigneeIds = new Set(projectTasks.map(t => t.assignee_id).filter(Boolean) as string[]);
+      for (const assigneeId of assigneeIds) {
+        await createNotification({
+          user_id: assigneeId,
+          type: 'project_playbook_reminder',
+          title: 'Playbook à rédiger',
+          message: `Le projet "${project.name}" est terminé. Pense à rédiger le playbook et à mettre à jour la stack.`,
+          workspace_id: project.workspace_id,
+        }).catch(err => console.error('Failed to create project_playbook_reminder notification:', err));
+      }
+    } else if (!allDone && project.completed_at) {
+      await db.update(schema.projects).set({ completed_at: null }).where(eq(schema.projects.id, projectId));
+    }
+  } catch (error) {
+    console.error('Failed to recalc project completion:', error);
+  }
+}
+
 export async function deleteProject(id: string): Promise<boolean> {
   try {
     await db.delete(schema.projects).where(eq(schema.projects.id, id));
     return true;
   } catch (error) {
     console.error('Failed to delete project:', error);
+    throw new Error('Database query failed. Please try again later.', { cause: error });
+  }
+}
+
+// ----------------- PROJECT MEMBERS -----------------
+// A project's own team roster — distinct from workspace membership (which
+// governs access). Adding someone to a project also grants them workspace
+// access if they didn't already have it, mirroring task-assignment.
+
+export async function getProjectMembers(projectId: string): Promise<ProjectMember[]> {
+  try {
+    const rows = await db.select().from(schema.projectMembers).where(eq(schema.projectMembers.project_id, projectId));
+    const allUsers = await getAllUsers();
+    return rows.map(r => ({
+      id: r.id,
+      project_id: r.project_id,
+      user_id: r.user_id,
+      added_at: r.added_at ? r.added_at.toISOString() : new Date().toISOString(),
+      user: allUsers.find(u => u.id === r.user_id),
+    }));
+  } catch (error) {
+    console.error('Failed to get project members:', error);
+    throw new Error('Database query failed. Please try again later.', { cause: error });
+  }
+}
+
+export async function addProjectMember(projectId: string, userId: string): Promise<ProjectMember> {
+  try {
+    const existing = await db.select().from(schema.projectMembers)
+      .where(and(eq(schema.projectMembers.project_id, projectId), eq(schema.projectMembers.user_id, userId)))
+      .limit(1);
+
+    const u = await getUserById(userId);
+    const userEcho = u ? {
+      id: u.id,
+      email: u.email,
+      name: u.name,
+      role: u.role as 'admin' | 'member',
+      avatar_url: u.avatar_url || undefined,
+    } : undefined;
+
+    if (existing.length > 0) {
+      return {
+        id: existing[0].id,
+        project_id: projectId,
+        user_id: userId,
+        added_at: existing[0].added_at ? existing[0].added_at.toISOString() : new Date().toISOString(),
+        user: userEcho,
+      };
+    }
+
+    const [created] = await db.insert(schema.projectMembers).values({
+      id: generateId('pm'),
+      project_id: projectId,
+      user_id: userId,
+    }).returning();
+
+    return {
+      id: created.id,
+      project_id: created.project_id,
+      user_id: created.user_id,
+      added_at: created.added_at ? created.added_at.toISOString() : new Date().toISOString(),
+      user: userEcho,
+    };
+  } catch (error) {
+    console.error('Failed to add project member:', error);
+    throw new Error('Database query failed. Please try again later.', { cause: error });
+  }
+}
+
+export async function removeProjectMember(projectId: string, userId: string): Promise<boolean> {
+  try {
+    await db.delete(schema.projectMembers)
+      .where(and(eq(schema.projectMembers.project_id, projectId), eq(schema.projectMembers.user_id, userId)));
+    return true;
+  } catch (error) {
+    console.error('Failed to remove project member:', error);
     throw new Error('Database query failed. Please try again later.', { cause: error });
   }
 }
@@ -815,7 +1073,11 @@ async function populateTaskDetails(t: typeof schema.tasks.$inferSelect): Promise
     status: t.status as TaskStatus,
     priority: t.priority as TaskPriority,
     assignee_id: t.assignee_id,
-    due_date: t.due_date,
+    start_at: t.start_at ? t.start_at.toISOString() : null,
+    end_at: t.end_at ? t.end_at.toISOString() : null,
+    completed_at: t.completed_at ? t.completed_at.toISOString() : null,
+    stopped_at: t.stopped_at ? t.stopped_at.toISOString() : null,
+    estimated_minutes: t.estimated_minutes ?? null,
     created_by: t.created_by || '',
     position: t.position || 0,
     created_at: t.created_at ? t.created_at.toISOString() : new Date().toISOString(),
@@ -840,7 +1102,11 @@ async function populateTaskDetails(t: typeof schema.tasks.$inferSelect): Promise
       name: project.name,
       description: project.description || undefined,
       status: project.status as any,
-      deadline: project.deadline || undefined,
+      start_at: project.start_at ? project.start_at.toISOString() : null,
+      end_at: project.end_at ? project.end_at.toISOString() : null,
+      completed_at: project.completed_at ? project.completed_at.toISOString() : null,
+      stopped_at: project.stopped_at ? project.stopped_at.toISOString() : null,
+      created_by: project.created_by,
       created_at: project.created_at ? project.created_at.toISOString() : new Date().toISOString(),
     } : undefined,
     workspace: workspace ? {
@@ -848,6 +1114,7 @@ async function populateTaskDetails(t: typeof schema.tasks.$inferSelect): Promise
       name: workspace.name,
       color: workspace.color,
       icon: workspace.icon,
+      photo_url: workspace.photo_url,
       created_at: workspace.created_at ? workspace.created_at.toISOString() : new Date().toISOString(),
     } : undefined,
     subtasks: subtasksList.map(s => ({
@@ -949,7 +1216,9 @@ export async function createTask(data: {
   status?: TaskStatus;
   priority?: TaskPriority;
   assignee_id?: string | null;
-  due_date?: string | null;
+  start_at?: string | null;
+  end_at?: string | null;
+  estimated_minutes?: number | null;
   created_by: string;
   tag_ids?: string[];
 }): Promise<Task> {
@@ -957,16 +1226,24 @@ export async function createTask(data: {
     const id = generateId('tsk');
     const existing = await db.select().from(schema.tasks).where(eq(schema.tasks.project_id, data.project_id));
     const maxPosition = existing.reduce((max, t) => Math.max(max, t.position || 0), -1);
+    const status = data.status || 'a_faire';
+    // The task chrono ("Chronométrer") starts automatically the moment a
+    // task is 'en_cours' — if no explicit start_at was given, anchor it to
+    // creation time rather than leaving it unset.
+    const autoStartAt = status === 'en_cours' && !data.start_at ? new Date() : (data.start_at ? new Date(data.start_at) : null);
 
     const [created] = await db.insert(schema.tasks).values({
       id,
       project_id: data.project_id,
       title: data.title,
       description: data.description,
-      status: data.status || 'a_faire',
+      status,
       priority: data.priority || 'normale',
       assignee_id: data.assignee_id || null,
-      due_date: data.due_date || null,
+      start_at: autoStartAt,
+      end_at: data.end_at ? new Date(data.end_at) : null,
+      completed_at: status === 'termine' ? new Date() : null,
+      estimated_minutes: data.estimated_minutes ?? null,
       position: maxPosition + 1,
       created_by: data.created_by,
     }).returning();
@@ -980,6 +1257,8 @@ export async function createTask(data: {
         });
       }
     }
+
+    await recalcProjectCompletion(data.project_id);
 
     const fullTask = await getTaskById(id);
     if (!fullTask) throw new Error('Task created but could not be retrieved');
@@ -996,18 +1275,40 @@ export async function updateTask(id: string, updates: Partial<{
   status: TaskStatus;
   priority: TaskPriority;
   assignee_id: string | null;
-  due_date: string | null;
+  start_at: string | null;
+  end_at: string | null;
+  stopped_at: string | null;
+  estimated_minutes: number | null;
   tag_ids: string[];
   position: number;
 }>): Promise<Task | null> {
   try {
+    const [existingTask] = await db.select().from(schema.tasks).where(eq(schema.tasks.id, id)).limit(1);
+    if (!existingTask) return null;
+
     const setPayload: any = {};
     if (updates.title !== undefined) setPayload.title = updates.title;
     if (updates.description !== undefined) setPayload.description = updates.description;
-    if (updates.status !== undefined) setPayload.status = updates.status;
+    if (updates.status !== undefined) {
+      setPayload.status = updates.status;
+      if (updates.status === 'termine' && existingTask.status !== 'termine') {
+        setPayload.completed_at = new Date();
+      } else if (updates.status !== 'termine' && existingTask.status === 'termine') {
+        setPayload.completed_at = null;
+      }
+      // The task chrono ("Chronométrer") starts automatically the first time
+      // a task becomes 'en_cours' — only fills start_at if it isn't already
+      // set, so this never overwrites a schedule the task already has.
+      if (updates.status === 'en_cours' && existingTask.status !== 'en_cours' && !existingTask.start_at && updates.start_at === undefined) {
+        setPayload.start_at = new Date();
+      }
+    }
     if (updates.priority !== undefined) setPayload.priority = updates.priority;
     if (updates.assignee_id !== undefined) setPayload.assignee_id = updates.assignee_id;
-    if (updates.due_date !== undefined) setPayload.due_date = updates.due_date;
+    if (updates.start_at !== undefined) setPayload.start_at = updates.start_at ? new Date(updates.start_at) : null;
+    if (updates.end_at !== undefined) setPayload.end_at = updates.end_at ? new Date(updates.end_at) : null;
+    if (updates.stopped_at !== undefined) setPayload.stopped_at = updates.stopped_at ? new Date(updates.stopped_at) : null;
+    if (updates.estimated_minutes !== undefined) setPayload.estimated_minutes = updates.estimated_minutes;
     if (updates.position !== undefined) setPayload.position = updates.position;
 
     if (Object.keys(setPayload).length > 0) {
@@ -1025,6 +1326,10 @@ export async function updateTask(id: string, updates: Partial<{
       }
     }
 
+    if (updates.status !== undefined) {
+      await recalcProjectCompletion(existingTask.project_id);
+    }
+
     return getTaskById(id);
   } catch (error) {
     console.error('Failed to update task:', error);
@@ -1034,10 +1339,27 @@ export async function updateTask(id: string, updates: Partial<{
 
 export async function reorderTasks(items: Array<{ id: string; status: TaskStatus; position: number }>): Promise<void> {
   try {
+    const affectedProjectIds = new Set<string>();
     for (const item of items) {
-      await db.update(schema.tasks)
-        .set({ status: item.status, position: item.position })
-        .where(eq(schema.tasks.id, item.id));
+      const [existingTask] = await db.select().from(schema.tasks).where(eq(schema.tasks.id, item.id)).limit(1);
+      if (!existingTask) continue;
+
+      const setPayload: any = { status: item.status, position: item.position };
+      if (item.status === 'termine' && existingTask.status !== 'termine') {
+        setPayload.completed_at = new Date();
+      } else if (item.status !== 'termine' && existingTask.status === 'termine') {
+        setPayload.completed_at = null;
+      }
+      if (item.status === 'en_cours' && existingTask.status !== 'en_cours' && !existingTask.start_at) {
+        setPayload.start_at = new Date();
+      }
+
+      await db.update(schema.tasks).set(setPayload).where(eq(schema.tasks.id, item.id));
+      affectedProjectIds.add(existingTask.project_id);
+    }
+
+    for (const projectId of affectedProjectIds) {
+      await recalcProjectCompletion(projectId);
     }
   } catch (error) {
     console.error('Failed to reorder tasks:', error);
@@ -1047,7 +1369,11 @@ export async function reorderTasks(items: Array<{ id: string; status: TaskStatus
 
 export async function deleteTask(id: string): Promise<boolean> {
   try {
+    const [existingTask] = await db.select().from(schema.tasks).where(eq(schema.tasks.id, id)).limit(1);
     await db.delete(schema.tasks).where(eq(schema.tasks.id, id));
+    if (existingTask) {
+      await recalcProjectCompletion(existingTask.project_id);
+    }
     return true;
   } catch (error) {
     console.error('Failed to delete task:', error);
@@ -1367,6 +1693,102 @@ export async function getTimeEntries(
   }
 }
 
+// ----------------- TIME ALLOCATION ("Mon Temps") -----------------
+
+function minutesBetween(startAt: Date | null, endAt: Date | null): number {
+  if (!startAt || !endAt) return 0;
+  const diff = endAt.getTime() - startAt.getTime();
+  return diff > 0 ? Math.round(diff / 60000) : 0;
+}
+
+// Builds the "allocated hours" breakdown for one member: every workspace
+// they belong to, the projects within it where they have at least one
+// assigned task, and per-task allocated (schedule-derived) vs logged
+// (manually tracked) minutes.
+export async function getMemberTimeAllocation(userId: string): Promise<TimeAllocationWorkspace[]> {
+  try {
+    const memberships = await db.select().from(schema.workspaceMembers).where(eq(schema.workspaceMembers.user_id, userId));
+    const wsIds = memberships.map(m => m.workspace_id);
+    if (wsIds.length === 0) return [];
+
+    const wsList = await db.select().from(schema.workspaces).where(inArray(schema.workspaces.id, wsIds));
+    const allProjects = await db.select().from(schema.projects).where(inArray(schema.projects.workspace_id, wsIds));
+    const prjIds = allProjects.map(p => p.id);
+    const myTasks = prjIds.length > 0
+      ? await db.select().from(schema.tasks).where(and(inArray(schema.tasks.project_id, prjIds), eq(schema.tasks.assignee_id, userId)))
+      : [];
+    const taskIds = myTasks.map(t => t.id);
+    const myTimeEntries = taskIds.length > 0
+      ? await db.select().from(schema.timeEntries).where(inArray(schema.timeEntries.task_id, taskIds))
+      : [];
+
+    return wsList.map(ws => {
+      const wsProjects = allProjects.filter(p => p.workspace_id === ws.id);
+      const projects: TimeAllocationProject[] = wsProjects
+        .map(p => {
+          const pTasks = myTasks.filter(t => t.project_id === p.id);
+          if (pTasks.length === 0) return null;
+          const tasksOut: TimeAllocationTask[] = pTasks.map(t => ({
+            id: t.id,
+            title: t.title,
+            status: t.status as TaskStatus,
+            start_at: t.start_at ? t.start_at.toISOString() : null,
+            end_at: t.end_at ? t.end_at.toISOString() : null,
+            completed_at: t.completed_at ? t.completed_at.toISOString() : null,
+            allocated_minutes: minutesBetween(t.start_at, t.end_at),
+            logged_minutes: myTimeEntries.filter(te => te.task_id === t.id).reduce((sum, te) => sum + te.duration_minutes, 0),
+          }));
+          return {
+            id: p.id,
+            name: p.name,
+            start_at: p.start_at ? p.start_at.toISOString() : null,
+            end_at: p.end_at ? p.end_at.toISOString() : null,
+            completed_at: p.completed_at ? p.completed_at.toISOString() : null,
+            tasks_count: tasksOut.length,
+            allocated_minutes: tasksOut.reduce((sum, t) => sum + t.allocated_minutes, 0),
+            logged_minutes: tasksOut.reduce((sum, t) => sum + t.logged_minutes, 0),
+            tasks: tasksOut,
+          };
+        })
+        .filter((p): p is TimeAllocationProject => !!p);
+
+      return {
+        id: ws.id,
+        name: ws.name,
+        color: ws.color,
+        icon: ws.icon,
+        photo_url: ws.photo_url,
+        projects,
+      };
+    }).filter(ws => ws.projects.length > 0);
+  } catch (error) {
+    console.error('Failed to get member time allocation:', error);
+    throw new Error('Database query failed. Please try again later.', { cause: error });
+  }
+}
+
+// Admin-only aggregate view: every member who belongs to at least one
+// workspace, each with their own getMemberTimeAllocation() breakdown.
+export async function getAllMembersTimeAllocation(): Promise<{ user: User; workspaces: TimeAllocationWorkspace[] }[]> {
+  try {
+    const memberships = await db.select({ user_id: schema.workspaceMembers.user_id }).from(schema.workspaceMembers);
+    const userIds = [...new Set(memberships.map(m => m.user_id))];
+    const allUsers = await getAllUsers();
+
+    const results = await Promise.all(userIds.map(async userId => {
+      const user = allUsers.find(u => u.id === userId);
+      if (!user) return null;
+      const workspaces = await getMemberTimeAllocation(userId);
+      return { user, workspaces };
+    }));
+
+    return results.filter((r): r is { user: User; workspaces: TimeAllocationWorkspace[] } => !!r);
+  } catch (error) {
+    console.error('Failed to get all members time allocation:', error);
+    throw new Error('Database query failed. Please try again later.', { cause: error });
+  }
+}
+
 // Ensures the single owner admin account exists on boot. Never overwrites an
 // existing account's password/role — that would silently undo a real password
 // change. It only creates the account the first time the database is empty,
@@ -1403,8 +1825,12 @@ async function hydrateConversation(conversationId: string, currentUserId: string
 
   const allUsers = await getAllUsers();
   const participants = participantRows
-    .map(p => allUsers.find(u => u.id === p.user_id))
-    .filter((u): u is User => !!u);
+    .map(p => {
+      const u = allUsers.find(u => u.id === p.user_id);
+      if (!u) return null;
+      return { ...u, last_read_at: p.last_read_at ? p.last_read_at.toISOString() : null };
+    })
+    .filter((u): u is User & { last_read_at: string | null } => !!u);
 
   const [lastMessageRow] = await db.select().from(schema.messages)
     .where(eq(schema.messages.conversation_id, conversationId))
@@ -1533,22 +1959,36 @@ export async function getConversationMessages(conversationId: string, limit: num
       .limit(limit);
 
     const allUsers = await getAllUsers();
+    const replyToIds = [...new Set(rows.map(r => r.reply_to_id).filter(Boolean))] as string[];
+    const repliedRows = replyToIds.length > 0
+      ? await db.select().from(schema.messages).where(inArray(schema.messages.id, replyToIds))
+      : [];
 
-    return rows.reverse().map(m => ({
-      id: m.id,
-      conversation_id: m.conversation_id,
-      sender_id: m.sender_id,
-      content: m.content,
-      created_at: m.created_at ? m.created_at.toISOString() : new Date().toISOString(),
-      sender: allUsers.find(u => u.id === m.sender_id),
-    }));
+    return rows.reverse().map(m => {
+      const repliedTo = m.reply_to_id ? repliedRows.find(r => r.id === m.reply_to_id) : undefined;
+      return {
+        id: m.id,
+        conversation_id: m.conversation_id,
+        sender_id: m.sender_id,
+        content: m.content,
+        reply_to_id: m.reply_to_id,
+        reply_to: repliedTo ? {
+          id: repliedTo.id,
+          content: repliedTo.content,
+          sender_id: repliedTo.sender_id,
+          sender_name: allUsers.find(u => u.id === repliedTo.sender_id)?.name,
+        } : null,
+        created_at: m.created_at ? m.created_at.toISOString() : new Date().toISOString(),
+        sender: allUsers.find(u => u.id === m.sender_id),
+      };
+    });
   } catch (error) {
     console.error('Failed to get conversation messages:', error);
     throw new Error('Database query failed. Please try again later.', { cause: error });
   }
 }
 
-export async function sendMessage(conversationId: string, senderId: string, content: string): Promise<Message> {
+export async function sendMessage(conversationId: string, senderId: string, content: string, replyToId?: string | null): Promise<Message> {
   try {
     const id = generateId('msg');
     const [created] = await db.insert(schema.messages).values({
@@ -1556,15 +1996,27 @@ export async function sendMessage(conversationId: string, senderId: string, cont
       conversation_id: conversationId,
       sender_id: senderId,
       content: content.trim(),
+      reply_to_id: replyToId || null,
     }).returning();
 
     const u = await getUserById(senderId);
+    const repliedTo = created.reply_to_id
+      ? (await db.select().from(schema.messages).where(eq(schema.messages.id, created.reply_to_id)).limit(1))[0]
+      : undefined;
+    const replySender = repliedTo ? await getUserById(repliedTo.sender_id) : undefined;
 
     return {
       id: created.id,
       conversation_id: created.conversation_id,
       sender_id: created.sender_id,
       content: created.content,
+      reply_to_id: created.reply_to_id,
+      reply_to: repliedTo ? {
+        id: repliedTo.id,
+        content: repliedTo.content,
+        sender_id: repliedTo.sender_id,
+        sender_name: replySender?.name,
+      } : null,
       created_at: created.created_at ? created.created_at.toISOString() : new Date().toISOString(),
       sender: u ? {
         id: u.id,
@@ -1722,26 +2174,28 @@ export async function deleteAllNotifications(userId: string): Promise<void> {
   }
 }
 
-// Scans active tasks for due-today / overdue deadlines and notifies their
-// assignee, at most once per task per type per day (checked against
-// notifications already created today). Meant to be called by a daily cron.
+// Scans active tasks whose chrono is overdue (end_at passed, not 'termine')
+// and notifies their assignee, at most once per task per type per day
+// (checked against notifications already created today). This is also the
+// "chrono rouge" notification for tasks. Meant to be called by a daily cron.
 export async function createDueDateNotifications(): Promise<{ created: number }> {
   try {
-    const today = new Date().toISOString().split('T')[0];
+    const now = new Date();
+    const todayStart = new Date(now.toISOString().split('T')[0]);
+    const todayEnd = new Date(todayStart.getTime() + 86400000);
 
     const dueTasks = await db.select({
       id: schema.tasks.id,
       title: schema.tasks.title,
-      due_date: schema.tasks.due_date,
+      end_at: schema.tasks.end_at,
       assignee_id: schema.tasks.assignee_id,
     }).from(schema.tasks)
       .where(and(
         ne(schema.tasks.status, 'termine'),
-        sql`${schema.tasks.due_date} IS NOT NULL`,
-        sql`${schema.tasks.due_date} <= ${today}`,
+        sql`${schema.tasks.end_at} IS NOT NULL`,
       ));
 
-    const relevant = dueTasks.filter(t => t.assignee_id);
+    const relevant = dueTasks.filter(t => t.assignee_id && t.end_at);
     if (relevant.length === 0) return { created: 0 };
 
     const taskIds = relevant.map(t => t.id);
@@ -1758,7 +2212,11 @@ export async function createDueDateNotifications(): Promise<{ created: number }>
 
     let created = 0;
     for (const task of relevant) {
-      const isOverdue = task.due_date! < today;
+      const endAt = task.end_at!;
+      const isOverdue = endAt.getTime() < now.getTime();
+      const isDueToday = !isOverdue && endAt >= todayStart && endAt < todayEnd;
+      if (!isOverdue && !isDueToday) continue;
+
       const type: NotificationType = isOverdue ? 'task_overdue' : 'task_due_today';
       const key = `${task.id}:${type}`;
       if (alreadyNotified.has(key)) continue;

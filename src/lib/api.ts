@@ -2,6 +2,7 @@ import {
   User,
   Workspace,
   WorkspaceMember,
+  ProjectMember,
   Project,
   Task,
   Subtask,
@@ -13,7 +14,9 @@ import {
   TaskPriority,
   Conversation,
   Message,
-  AppNotification
+  AppNotification,
+  JobFunction,
+  TimeAllocationWorkspace
 } from '../types';
 
 const TOKEN_KEY = 'axetask_jwt_token';
@@ -80,10 +83,10 @@ export const api = {
 
   getMe: () => fetchWithAuth<{ user: User }>('/api/auth/me'),
 
-  updateProfile: (name: string, email?: string) =>
+  updateProfile: (name: string, email?: string, avatar_url?: string) =>
     fetchWithAuth<{ user: User }>('/api/auth/profile', {
       method: 'PUT',
-      body: JSON.stringify({ name, email }),
+      body: JSON.stringify({ name, email, avatar_url }),
     }),
 
   changePassword: (current_password: string, new_password: string) =>
@@ -94,7 +97,7 @@ export const api = {
 
   getUsers: () => fetchWithAuth<User[]>('/api/users'),
 
-  createUser: (data: { name: string; email: string; password?: string; role?: 'admin' | 'member' }) =>
+  createUser: (data: { name: string; email: string; password?: string; role?: 'admin' | 'member'; function_id?: string | null }) =>
     fetchWithAuth<{ user: User }>('/api/users', {
       method: 'POST',
       body: JSON.stringify(data),
@@ -114,10 +117,10 @@ export const api = {
   // Workspaces
   getWorkspaces: () => fetchWithAuth<Workspace[]>('/api/workspaces'),
 
-  createWorkspace: (data: { name: string; color?: string; icon?: string } | string, color?: string, icon?: string) => {
-    const payload = typeof data === 'string' 
+  createWorkspace: (data: { name: string; color?: string; icon?: string; photo_url?: string } | string, color?: string, icon?: string) => {
+    const payload = typeof data === 'string'
       ? { name: data, color: color || '#F59E0B', icon: icon || 'Briefcase' }
-      : { name: data.name, color: data.color || '#F59E0B', icon: data.icon || 'Briefcase' };
+      : { name: data.name, color: data.color || '#F59E0B', icon: data.icon || 'Briefcase', photo_url: data.photo_url };
     return fetchWithAuth<Workspace>('/api/workspaces', {
       method: 'POST',
       body: JSON.stringify(payload),
@@ -182,7 +185,7 @@ export const api = {
   getProject: (projectId: string) =>
     fetchWithAuth<Project>(`/api/projects/${projectId}`),
 
-  createProject: (workspaceId: string, data: { name: string; description?: string; deadline?: string; status?: string }) =>
+  createProject: (workspaceId: string, data: { name: string; description?: string; start_at?: string; end_at?: string; status?: string }) =>
     fetchWithAuth<Project>(`/api/workspaces/${workspaceId}/projects`, {
       method: 'POST',
       body: JSON.stringify(data),
@@ -196,6 +199,21 @@ export const api = {
 
   deleteProject: (projectId: string) =>
     fetchWithAuth<{ success: boolean }>(`/api/projects/${projectId}`, {
+      method: 'DELETE',
+    }),
+
+  // Project Members
+  getProjectMembers: (projectId: string) =>
+    fetchWithAuth<ProjectMember[]>(`/api/projects/${projectId}/members`),
+
+  addProjectMember: (projectId: string, userId: string) =>
+    fetchWithAuth<ProjectMember>(`/api/projects/${projectId}/members`, {
+      method: 'POST',
+      body: JSON.stringify({ user_id: userId }),
+    }),
+
+  removeProjectMember: (projectId: string, userId: string) =>
+    fetchWithAuth<{ success: boolean }>(`/api/projects/${projectId}/members/${userId}`, {
       method: 'DELETE',
     }),
 
@@ -215,7 +233,9 @@ export const api = {
     status?: TaskStatus;
     priority?: TaskPriority;
     assignee_id?: string | null;
-    due_date?: string | null;
+    start_at?: string | null;
+    end_at?: string | null;
+    estimated_minutes?: number | null;
     tag_ids?: string[];
   }) =>
     fetchWithAuth<Task>(`/api/projects/${projectId}/tasks`, {
@@ -303,6 +323,27 @@ export const api = {
     return fetchWithAuth<TimeEntry[]>(`/api/time-entries${qs ? `?${qs}` : ''}`);
   },
 
+  // Time Allocation ("Mon Temps")
+  getMyTimeAllocation: () => fetchWithAuth<TimeAllocationWorkspace[]>('/api/time/allocation'),
+
+  getAllMembersTimeAllocation: () =>
+    fetchWithAuth<{ user: User; workspaces: TimeAllocationWorkspace[] }[]>('/api/time/allocation/all'),
+
+  // Job Functions
+  getJobFunctions: () => fetchWithAuth<JobFunction[]>('/api/job-functions'),
+
+  createJobFunction: (name: string) =>
+    fetchWithAuth<JobFunction>('/api/job-functions', { method: 'POST', body: JSON.stringify({ name }) }),
+
+  deleteJobFunction: (id: string) =>
+    fetchWithAuth<{ success: boolean }>(`/api/job-functions/${id}`, { method: 'DELETE' }),
+
+  setUserFunction: (userId: string, functionId: string | null) =>
+    fetchWithAuth<{ user: User }>(`/api/users/${userId}/function`, {
+      method: 'PATCH',
+      body: JSON.stringify({ function_id: functionId }),
+    }),
+
   // Messaging
   getConversations: () => fetchWithAuth<Conversation[]>('/api/conversations'),
 
@@ -317,10 +358,10 @@ export const api = {
     return fetchWithAuth<Message[]>(`/api/conversations/${conversationId}/messages${qs}`);
   },
 
-  sendMessage: (conversationId: string, content: string) =>
+  sendMessage: (conversationId: string, content: string, replyToId?: string | null) =>
     fetchWithAuth<Message>(`/api/conversations/${conversationId}/messages`, {
       method: 'POST',
-      body: JSON.stringify({ content }),
+      body: JSON.stringify({ content, reply_to_id: replyToId }),
     }),
 
   markConversationRead: (conversationId: string) =>

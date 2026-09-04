@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { useWorkspace } from '../../context/WorkspaceContext';
 import { useToast } from '../../context/ToastContext';
 import { api } from '../../lib/api';
+import { resizeImageToDataUrl } from '../../lib/image';
 import { Layers, X, Plus } from 'lucide-react';
 
 const PRESET_COLORS = [
@@ -19,10 +20,26 @@ export const CreateWorkspaceModal: React.FC = () => {
 
   const [name, setName] = useState('');
   const [color, setColor] = useState('#F59E0B');
+  const [photoUrl, setPhotoUrl] = useState<string | undefined>(undefined);
+  const [isUploadingPhoto, setIsUploadingPhoto] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
 
   if (!isCreateWorkspaceModalOpen) return null;
+
+  const handlePhotoChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file) return;
+    try {
+      setIsUploadingPhoto(true);
+      setPhotoUrl(await resizeImageToDataUrl(file, 500, 0.85));
+    } catch (err: any) {
+      setError(err.message || "Erreur lors de l'envoi de la photo.");
+    } finally {
+      setIsUploadingPhoto(false);
+    }
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -37,6 +54,7 @@ export const CreateWorkspaceModal: React.FC = () => {
       const newWs = await api.createWorkspace({
         name: name.trim(),
         color,
+        photo_url: photoUrl,
       });
 
       await refreshWorkspaces();
@@ -49,6 +67,7 @@ export const CreateWorkspaceModal: React.FC = () => {
       });
       setName('');
       setColor('#F59E0B');
+      setPhotoUrl(undefined);
     } catch (err: any) {
       setError(err.message || 'Erreur lors de la création du workspace.');
     } finally {
@@ -100,6 +119,34 @@ export const CreateWorkspaceModal: React.FC = () => {
               placeholder="Ex: SaaS Analytics, E-commerce Studio..."
               className="w-full px-3 py-2 rounded bg-[#090D16] border border-[#1E293B] text-xs font-semibold text-slate-100 placeholder-slate-500 focus:outline-none focus:border-[#2563EB]/60"
             />
+          </div>
+
+          <div>
+            <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1.5">
+              Photo de l'espace
+            </label>
+            <label className="relative cursor-pointer group inline-block">
+              <div className="w-14 h-14 rounded-lg overflow-hidden bg-[#090D16] border border-[#1E293B] flex items-center justify-center">
+                {photoUrl ? (
+                  <img src={photoUrl} alt="Aperçu" className="w-full h-full object-cover" />
+                ) : (
+                  <Layers className="w-5 h-5 text-slate-500" />
+                )}
+              </div>
+              <div className="absolute inset-0 rounded-lg bg-black/60 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity">
+                <span className="text-[9px] font-bold text-white uppercase">
+                  {isUploadingPhoto ? '...' : photoUrl ? 'Modifier' : 'Ajouter'}
+                </span>
+              </div>
+              <input
+                type="file"
+                accept="image/*"
+                onChange={handlePhotoChange}
+                disabled={isUploadingPhoto}
+                className="hidden"
+              />
+            </label>
+            <p className="text-[10px] text-slate-500 mt-1">Optionnel — modifiable plus tard dans les paramètres.</p>
           </div>
 
           <div>

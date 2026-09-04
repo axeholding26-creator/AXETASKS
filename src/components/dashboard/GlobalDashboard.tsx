@@ -9,9 +9,8 @@ import {
   LayoutDashboard, 
   Calendar, 
   Clock, 
-  AlertTriangle, 
-  Play, 
-  CheckCircle2, 
+  AlertTriangle,
+  CheckCircle2,
   Layers, 
   FolderGit2, 
   Flame, 
@@ -24,7 +23,7 @@ import {
 
 export const GlobalDashboard: React.FC = () => {
   const { user } = useAuth();
-  const { setSelectedTaskId, setIsCreateTaskModalOpen, startTimer, activeTimer, taskVersion, bumpTaskVersion } = useWorkspace();
+  const { setSelectedTaskId, setIsCreateTaskModalOpen, taskVersion, bumpTaskVersion } = useWorkspace();
   const [tasks, setTasks] = useState<Task[]>([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<'all' | 'today' | 'overdue' | 'in_progress' | 'urgent'>('all');
@@ -47,10 +46,14 @@ export const GlobalDashboard: React.FC = () => {
   }, [user, taskVersion]);
 
   // Calculations
-  const todayStr = new Date().toISOString().split('T')[0];
+  const now = new Date();
+  const todayStr = now.toISOString().split('T')[0];
+  const isSameDay = (iso: string) => new Date(iso).toISOString().split('T')[0] === todayStr;
+  const isOverdueEndAt = (endAt?: string | null) => !!endAt && new Date(endAt).getTime() < now.getTime();
+  const isDueTodayEndAt = (endAt?: string | null) => !!endAt && !isOverdueEndAt(endAt) && isSameDay(endAt);
 
-  const overdueTasks = tasks.filter(t => t.due_date && t.due_date < todayStr && t.status !== 'termine');
-  const todayTasks = tasks.filter(t => t.due_date === todayStr && t.status !== 'termine');
+  const overdueTasks = tasks.filter(t => isOverdueEndAt(t.end_at) && t.status !== 'termine');
+  const todayTasks = tasks.filter(t => isDueTodayEndAt(t.end_at) && t.status !== 'termine');
   const inProgressTasks = tasks.filter(t => t.status === 'en_cours');
   const urgentTasks = tasks.filter(t => (t.priority === 'urgente' || t.priority === 'haute') && t.status !== 'termine');
   const completedTasks = tasks.filter(t => t.status === 'termine');
@@ -65,8 +68,8 @@ export const GlobalDashboard: React.FC = () => {
       if (!match) return false;
     }
 
-    if (filter === 'overdue') return t.due_date && t.due_date < todayStr && t.status !== 'termine';
-    if (filter === 'today') return t.due_date === todayStr && t.status !== 'termine';
+    if (filter === 'overdue') return isOverdueEndAt(t.end_at) && t.status !== 'termine';
+    if (filter === 'today') return isDueTodayEndAt(t.end_at) && t.status !== 'termine';
     if (filter === 'in_progress') return t.status === 'en_cours';
     if (filter === 'urgent') return (t.priority === 'urgente' || t.priority === 'haute') && t.status !== 'termine';
     return true;
@@ -84,8 +87,8 @@ export const GlobalDashboard: React.FC = () => {
 
   const formatDueDate = (dateStr?: string | null) => {
     if (!dateStr) return { text: 'Sans date', isOverdue: false, isToday: false };
-    const isOverdue = dateStr < todayStr;
-    const isToday = dateStr === todayStr;
+    const isOverdue = isOverdueEndAt(dateStr);
+    const isToday = isDueTodayEndAt(dateStr);
     const date = new Date(dateStr);
     const formatted = date.toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' });
     return {
@@ -266,8 +269,7 @@ export const GlobalDashboard: React.FC = () => {
             </div>
           ) : (
             filteredTasks.map(task => {
-              const dueInfo = formatDueDate(task.due_date);
-              const isTaskTimerActive = activeTimer?.taskId === task.id;
+              const dueInfo = formatDueDate(task.end_at);
 
               return (
                 <div
@@ -316,7 +318,7 @@ export const GlobalDashboard: React.FC = () => {
                   {/* Right: Due Date, Priority, Status, Quick Actions */}
                   <div className="flex items-center gap-2 shrink-0 self-end md:self-center" onClick={e => e.stopPropagation()}>
                     {/* Due Date */}
-                    {task.due_date && (
+                    {task.end_at && (
                       <span
                         className={`inline-flex items-center gap-1 text-[11px] font-semibold px-2 py-0.5 rounded border ${
                           dueInfo.isOverdue && task.status !== 'termine'
@@ -336,26 +338,6 @@ export const GlobalDashboard: React.FC = () => {
 
                     {/* Status Dropdown / Badge */}
                     <StatusBadge status={task.status} />
-
-                    {/* Stopwatch Start/Log button */}
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        if (isTaskTimerActive) {
-                          // Already active
-                        } else {
-                          startTimer(task);
-                        }
-                      }}
-                      title="Lancer le chrono sur cette tâche"
-                      className={`p-1.5 rounded border transition-all ${
-                        isTaskTimerActive
-                          ? 'bg-[#2563EB]/20 text-[#60A5FA] border-[#2563EB]/50'
-                          : 'bg-[#0B1120] text-slate-400 border-[#1E293B] hover:text-[#60A5FA] hover:border-[#2563EB]/40'
-                      }`}
-                    >
-                      <Play className="w-3 h-3" />
-                    </button>
 
                     {/* Direct open drawer button */}
                     <button

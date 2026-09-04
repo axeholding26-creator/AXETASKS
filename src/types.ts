@@ -5,12 +5,20 @@ export type WorkspaceMemberRole = 'admin' | 'member';
 export type TaskStatus = 'a_faire' | 'en_cours' | 'en_revision' | 'termine' | 'bloque';
 export type TaskPriority = 'basse' | 'normale' | 'haute' | 'urgente';
 
+export interface JobFunction {
+  id: string;
+  name: string;
+}
+
 export interface User {
   id: string;
   email: string;
   name: string;
   avatar_url?: string;
   role: UserRole;
+  function_id?: string | null;
+  job_function?: JobFunction | null;
+  last_seen_at?: string | null;
   created_at?: string;
 }
 
@@ -19,6 +27,7 @@ export interface Workspace {
   name: string;
   color: string;
   icon: string;
+  photo_url?: string | null;
   created_at: string;
   member_count?: number;
   active_tasks_count?: number;
@@ -37,13 +46,25 @@ export interface WorkspaceMember {
   user?: User;
 }
 
+export interface ProjectMember {
+  id: string;
+  project_id: string;
+  user_id: string;
+  added_at: string;
+  user?: User;
+}
+
 export interface Project {
   id: string;
   workspace_id: string;
   name: string;
   description?: string;
   status: 'active' | 'archived' | 'planned' | 'completed';
-  deadline?: string;
+  start_at?: string | null;
+  end_at?: string | null;
+  completed_at?: string | null;
+  stopped_at?: string | null;
+  created_by?: string | null;
   created_at: string;
   workspace?: Workspace;
   tasks_count?: number;
@@ -117,7 +138,11 @@ export interface Task {
   status: TaskStatus;
   priority: TaskPriority;
   assignee_id?: string | null;
-  due_date?: string | null;
+  start_at?: string | null;
+  end_at?: string | null;
+  completed_at?: string | null;
+  stopped_at?: string | null;
+  estimated_minutes?: number | null;
   created_by: string;
   position: number;
   created_at: string;
@@ -141,8 +166,14 @@ export interface Message {
   conversation_id: string;
   sender_id: string;
   content: string;
+  reply_to_id?: string | null;
+  reply_to?: { id: string; content: string; sender_id: string; sender_name?: string } | null;
   created_at: string;
   sender?: User;
+}
+
+export interface ConversationParticipant extends User {
+  last_read_at?: string | null;
 }
 
 export interface Conversation {
@@ -150,9 +181,41 @@ export interface Conversation {
   is_group: boolean;
   name?: string | null;
   created_at: string;
-  participants: User[];
+  participants: ConversationParticipant[];
   last_message?: Message | null;
   unread_count: number;
+}
+
+export interface TimeAllocationTask {
+  id: string;
+  title: string;
+  status: TaskStatus;
+  start_at: string | null;
+  end_at: string | null;
+  completed_at: string | null;
+  allocated_minutes: number;
+  logged_minutes: number;
+}
+
+export interface TimeAllocationProject {
+  id: string;
+  name: string;
+  start_at: string | null;
+  end_at: string | null;
+  completed_at: string | null;
+  tasks_count: number;
+  allocated_minutes: number;
+  logged_minutes: number;
+  tasks: TimeAllocationTask[];
+}
+
+export interface TimeAllocationWorkspace {
+  id: string;
+  name: string;
+  color: string;
+  icon: string;
+  photo_url: string | null;
+  projects: TimeAllocationProject[];
 }
 
 export interface DashboardStats {
@@ -173,7 +236,9 @@ export type NotificationType =
   | 'task_overdue'
   | 'workspace_added'
   | 'workspace_removed'
-  | 'workspace_role_changed';
+  | 'workspace_role_changed'
+  | 'project_completed'
+  | 'project_playbook_reminder';
 
 export interface AppNotification {
   id: string;

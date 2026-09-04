@@ -19,6 +19,7 @@ interface WorkspacesListProps {
 
 export const WorkspacesList: React.FC<WorkspacesListProps> = ({ onSelectWorkspace }) => {
   const { user } = useAuth();
+  const isGlobalAdmin = user?.role === 'admin';
   const { workspaces, setIsCreateWorkspaceModalOpen, setCurrentWorkspaceId } = useWorkspace();
 
   const totalActive = workspaces.reduce((acc, w) => acc + (w.active_tasks_count || 0), 0);
@@ -42,13 +43,15 @@ export const WorkspacesList: React.FC<WorkspacesListProps> = ({ onSelectWorkspac
           </p>
         </div>
 
-        <button
-          onClick={() => setIsCreateWorkspaceModalOpen(true)}
-          className="flex items-center gap-2 px-3.5 py-1.5 rounded bg-[#2563EB] hover:bg-[#1D4ED8] text-white font-bold text-xs shadow-sm shadow-blue-500/25 transition-all self-start sm:self-auto"
-        >
-          <Plus className="w-3.5 h-3.5 stroke-[2.5]" />
-          <span>Nouvel espace</span>
-        </button>
+        {isGlobalAdmin && (
+          <button
+            onClick={() => setIsCreateWorkspaceModalOpen(true)}
+            className="flex items-center gap-2 px-3.5 py-1.5 rounded bg-[#2563EB] hover:bg-[#1D4ED8] text-white font-bold text-xs shadow-sm shadow-blue-500/25 transition-all self-start sm:self-auto"
+          >
+            <Plus className="w-3.5 h-3.5 stroke-[2.5]" />
+            <span>Nouvel espace</span>
+          </button>
+        )}
       </div>
 
       {/* Global Overview Bar */}
@@ -108,12 +111,16 @@ export const WorkspacesList: React.FC<WorkspacesListProps> = ({ onSelectWorkspac
               <div>
                 {/* Header */}
                 <div className="flex items-start justify-between gap-3 mb-2.5">
-                  <div className="flex items-center gap-2.5">
+                  <div className="flex items-center gap-3">
                     <div
-                      className="w-8 h-8 rounded flex items-center justify-center text-white shadow-sm"
+                      className="w-14 h-14 rounded-lg flex items-center justify-center text-white shadow-sm overflow-hidden shrink-0"
                       style={{ backgroundColor: `${ws.color}20`, border: `1px solid ${ws.color}40` }}
                     >
-                      <div className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: ws.color }} />
+                      {ws.photo_url ? (
+                        <img src={ws.photo_url} alt={ws.name} className="w-full h-full object-cover" />
+                      ) : (
+                        <div className="w-3.5 h-3.5 rounded-full" style={{ backgroundColor: ws.color }} />
+                      )}
                     </div>
                     <div>
                       <h3 className="text-sm font-bold text-slate-100 group-hover:text-[#60A5FA] transition-colors">
@@ -163,21 +170,23 @@ export const WorkspacesList: React.FC<WorkspacesListProps> = ({ onSelectWorkspac
           );
         })}
 
-        {/* Create workspace button card */}
-        <button
-          onClick={() => setIsCreateWorkspaceModalOpen(true)}
-          className="p-5 rounded border border-dashed border-[#1E293B] hover:border-[#2563EB]/50 bg-[#0F172A]/40 hover:bg-[#0F172A] transition-all flex flex-col items-center justify-center text-center group min-h-[180px]"
-        >
-          <div className="w-10 h-10 rounded bg-[#2563EB]/10 border border-[#2563EB]/20 group-hover:bg-[#2563EB]/20 flex items-center justify-center text-[#3B82F6] transition-colors mb-2">
-            <Plus className="w-5 h-5" />
-          </div>
-          <h4 className="text-xs font-bold text-slate-200 group-hover:text-[#60A5FA]">
-            Ajouter un espace de travail
-          </h4>
-          <p className="text-[10px] text-slate-500 mt-1 max-w-[200px]">
-            Créez une nouvelle venture avec ses propres membres et projets.
-          </p>
-        </button>
+        {/* Create workspace button card — admin only */}
+        {isGlobalAdmin && (
+          <button
+            onClick={() => setIsCreateWorkspaceModalOpen(true)}
+            className="p-5 rounded border border-dashed border-[#1E293B] hover:border-[#2563EB]/50 bg-[#0F172A]/40 hover:bg-[#0F172A] transition-all flex flex-col items-center justify-center text-center group min-h-[180px]"
+          >
+            <div className="w-10 h-10 rounded bg-[#2563EB]/10 border border-[#2563EB]/20 group-hover:bg-[#2563EB]/20 flex items-center justify-center text-[#3B82F6] transition-colors mb-2">
+              <Plus className="w-5 h-5" />
+            </div>
+            <h4 className="text-xs font-bold text-slate-200 group-hover:text-[#60A5FA]">
+              Ajouter un espace de travail
+            </h4>
+            <p className="text-[10px] text-slate-500 mt-1 max-w-[200px]">
+              Créez une nouvelle venture avec ses propres membres et projets.
+            </p>
+          </button>
+        )}
       </div>
     </div>
   );

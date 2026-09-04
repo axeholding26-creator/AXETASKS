@@ -91,6 +91,13 @@ async function authMiddleware(req: AuthenticatedRequest, res: Response, next: Ne
       avatar_url: safeUser.avatar_url || undefined,
       created_at: safeUser.created_at ? safeUser.created_at.toISOString() : undefined,
     };
+
+    // Presence: throttled so this doesn't write on every single request.
+    const lastSeen = dbUser.last_seen_at ? dbUser.last_seen_at.getTime() : 0;
+    if (Date.now() - lastSeen > 30_000) {
+      db.touchUserLastSeen(dbUser.id).catch(err => console.error('Failed to touch last_seen_at:', err));
+    }
+
     next();
   } catch (err) {
     console.error('Auth verification error:', err);
@@ -260,7 +267,7 @@ export function createApp() {
     if (req.user!.role !== 'admin') {
       return res.status(403).json({ error: 'Action réservée aux administrateurs.' });
     }
-    const { name, email, password, role } = req.body;
+    const { name, email, password, role, function_id } = req.body;
     if (!name || !email) {
       return res.status(400).json({ error: 'Nom et adresse email requis.' });
     }
@@ -274,7 +281,7 @@ export function createApp() {
       if (!password || password.length < 6) {
         return res.status(400).json({ error: 'Un mot de passe d’au moins 6 caractères est requis.' });
       }
-      const newUser = await db.createUserWithRole(email, password, name, role || 'member');
+      const newUser = await db.createUserWithRole(email, password, name, role || 'member', function_id);
       res.status(201).json({ user: newUser });
     } catch (err: any) {
       res.status(500).json({ error: err.message || 'Erreur lors de la création du profil utilisateur.' });
@@ -325,6 +332,60 @@ export function createApp() {
     }
   });
 
+  // Job Functions: List (any authenticated user, for display)
+  app.get('/api/job-functions', authMiddleware, async (req: AuthenticatedRequest, res) => {
+    try {
+      const functions = await db.getJobFunctions();
+      res.json(functions);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message || 'Erreur lors de la récupération des fonctions.' });
+    }
+  });
+
+  // Job Functions: Create (global admin only)
+  app.post('/api/job-functions', authMiddleware, async (req: AuthenticatedRequest, res) => {
+    if (req.user!.role !== 'admin') {
+      return res.status(403).json({ error: 'Action réservée aux administrateurs.' });
+    }
+    const { name } = req.body;
+    if (!name || !name.trim()) {
+      return res.status(400).json({ error: 'Le nom de la fonction est requis.' });
+    }
+    try {
+      const created = await db.createJobFunction(name.trim());
+      res.status(201).json(created);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message || 'Erreur lors de la création de la fonction.' });
+    }
+  });
+
+  // Job Functions: Delete (global admin only)
+  app.delete('/api/job-functions/:id', authMiddleware, async (req: AuthenticatedRequest, res) => {
+    if (req.user!.role !== 'admin') {
+      return res.status(403).json({ error: 'Action réservée aux administrateurs.' });
+    }
+    try {
+      await db.deleteJobFunction(req.params.id);
+      res.json({ success: true });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message || 'Erreur lors de la suppression de la fonction.' });
+    }
+  });
+
+  // Users: Assign / remove a job function (global admin only — members cannot self-edit)
+  app.patch('/api/users/:id/function', authMiddleware, async (req: AuthenticatedRequest, res) => {
+    if (req.user!.role !== 'admin') {
+      return res.status(403).json({ error: 'Action réservée aux administrateurs.' });
+    }
+    const { function_id } = req.body;
+    try {
+      const updated = await db.setUserFunction(req.params.id, function_id || null);
+      res.json({ user: updated });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message || "Erreur lors de l'affectation de la fonction." });
+    }
+  });
+
   // Workspaces: List all accessible by current user
   app.get('/api/workspaces', authMiddleware, async (req: AuthenticatedRequest, res) => {
     const user = req.user!;
@@ -339,12 +400,15 @@ export function createApp() {
 
   // Workspaces: Create new workspace
   app.post('/api/workspaces', authMiddleware, async (req: AuthenticatedRequest, res) => {
-    const { name, color, icon } = req.body;
+    if (req.user!.role !== 'admin') {
+      return res.status(403).json({ error: 'Seul un administrateur peut créer un espace de travail.' });
+    }
+    const { name, color, icon, photo_url } = req.body;
     if (!name) {
       return res.status(400).json({ error: 'Le nom du workspace est requis.' });
     }
     try {
-      const ws = await db.createWorkspace(name, color, icon, req.user!.id);
+      const ws = await db.createWorkspace(name, color, icon, req.user!.id, photo_url);
       res.status(201).json(ws);
     } catch (err: any) {
       res.status(500).json({ error: err.message || 'Erreur lors de la création du workspace.' });
@@ -360,8 +424,8 @@ export function createApp() {
       if (!canAdmin) {
         return res.status(403).json({ error: 'Accès refusé : vous devez être administrateur du workspace.' });
       }
-      const { name, color, icon } = req.body;
-      const updated = await db.updateWorkspace(wsId, { name, color, icon });
+      const { name, color, icon, photo_url } = req.body;
+      const updated = await db.updateWorkspace(wsId, { name, color, icon, photo_url });
       if (!updated) return res.status(404).json({ error: 'Workspace introuvable.' });
       res.json(updated);
     } catch (err: any) {
@@ -462,6 +526,14 @@ export function createApp() {
     const memberId = req.params.id;
     const { role } = req.body;
     try {
+      const member = await db.getWorkspaceMemberById(memberId);
+      if (!member) return res.status(404).json({ error: 'Membre introuvable.' });
+      const isGlobalAdmin = req.user!.role === 'admin';
+      const canAdmin = await db.userIsWorkspaceAdmin(req.user!.id, member.workspace_id, isGlobalAdmin);
+      if (!canAdmin) {
+        return res.status(403).json({ error: 'Seul un administrateur du workspace peut modifier ce rôle.' });
+      }
+
       const updated = await db.updateWorkspaceMemberById(memberId, role || 'member');
       if (!updated) return res.status(404).json({ error: 'Membre introuvable.' });
 
@@ -486,6 +558,14 @@ export function createApp() {
   app.delete('/api/workspace-members/:id', authMiddleware, async (req: AuthenticatedRequest, res) => {
     const memberId = req.params.id;
     try {
+      const member = await db.getWorkspaceMemberById(memberId);
+      if (!member) return res.status(404).json({ error: 'Membre introuvable.' });
+      const isGlobalAdmin = req.user!.role === 'admin';
+      const canAdmin = await db.userIsWorkspaceAdmin(req.user!.id, member.workspace_id, isGlobalAdmin);
+      if (!canAdmin && member.user_id !== req.user!.id) {
+        return res.status(403).json({ error: 'Seul un administrateur du workspace peut retirer ce membre.' });
+      }
+
       const removed = await db.removeWorkspaceMemberById(memberId);
 
       if (removed && removed.user_id !== req.user!.id) {
@@ -529,11 +609,15 @@ export function createApp() {
       if (!canAccess) {
         return res.status(403).json({ error: 'Accès refusé à ce workspace.' });
       }
-      const { name, description, deadline, status } = req.body;
+      const { name, description, start_at, end_at, status } = req.body;
       if (!name) {
         return res.status(400).json({ error: 'Le nom du projet est requis.' });
       }
-      const project = await db.createProject(wsId, name, description, deadline, status);
+      const canAdmin = await db.userIsWorkspaceAdmin(req.user!.id, wsId, isGlobalAdmin);
+      if ((start_at || end_at) && !canAdmin) {
+        return res.status(403).json({ error: "Seul un administrateur du workspace peut fixer les dates d'un projet." });
+      }
+      const project = await db.createProject(wsId, name, description, start_at, end_at, status, req.user!.id);
       res.status(201).json(project);
     } catch (err: any) {
       res.status(500).json({ error: err.message || 'Erreur lors de la création du projet.' });
@@ -566,8 +650,11 @@ export function createApp() {
       if (!canAccess) {
         return res.status(403).json({ error: 'Accès refusé à ce projet.' });
       }
-      const { name, description, status, deadline } = req.body;
-      const updated = await db.updateProject(req.params.id, { name, description, status, deadline });
+      const { name, description, status, start_at, end_at, stopped_at } = req.body;
+      if ((start_at !== undefined || end_at !== undefined || stopped_at !== undefined) && !(await db.userIsWorkspaceAdmin(req.user!.id, project.workspace_id, isGlobalAdmin))) {
+        return res.status(403).json({ error: "Seul un administrateur du workspace peut modifier les dates ou le chrono d'un projet." });
+      }
+      const updated = await db.updateProject(req.params.id, { name, description, status, start_at, end_at, stopped_at });
       res.json(updated);
     } catch (err: any) {
       res.status(500).json({ error: err.message || 'Erreur lors de la modification du projet.' });
@@ -588,6 +675,62 @@ export function createApp() {
       res.json({ success: true });
     } catch (err: any) {
       res.status(500).json({ error: err.message || 'Erreur lors de la suppression du projet.' });
+    }
+  });
+
+  // Project Members: Get
+  app.get('/api/projects/:id/members', authMiddleware, async (req: AuthenticatedRequest, res) => {
+    try {
+      const project = await db.getProjectById(req.params.id);
+      if (!project) return res.status(404).json({ error: 'Projet introuvable.' });
+      const isGlobalAdmin = req.user!.role === 'admin';
+      const canAccess = await db.userCanAccessWorkspace(req.user!.id, project.workspace_id, isGlobalAdmin);
+      if (!canAccess) {
+        return res.status(403).json({ error: 'Accès refusé à ce projet.' });
+      }
+      const members = await db.getProjectMembers(req.params.id);
+      res.json(members);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message || 'Erreur lors de la récupération des membres du projet.' });
+    }
+  });
+
+  // Project Members: Add (workspace admin only)
+  app.post('/api/projects/:id/members', authMiddleware, async (req: AuthenticatedRequest, res) => {
+    try {
+      const project = await db.getProjectById(req.params.id);
+      if (!project) return res.status(404).json({ error: 'Projet introuvable.' });
+      const isGlobalAdmin = req.user!.role === 'admin';
+      const canAdmin = await db.userIsWorkspaceAdmin(req.user!.id, project.workspace_id, isGlobalAdmin);
+      if (!canAdmin) {
+        return res.status(403).json({ error: 'Seul un administrateur du workspace peut ajouter un membre au projet.' });
+      }
+      const { user_id } = req.body;
+      if (!user_id) {
+        return res.status(400).json({ error: 'user_id est requis.' });
+      }
+      await db.ensureWorkspaceMembership(project.workspace_id, user_id);
+      const member = await db.addProjectMember(req.params.id, user_id);
+      res.status(201).json(member);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message || "Erreur lors de l'ajout du membre au projet." });
+    }
+  });
+
+  // Project Members: Remove (workspace admin only)
+  app.delete('/api/projects/:id/members/:userId', authMiddleware, async (req: AuthenticatedRequest, res) => {
+    try {
+      const project = await db.getProjectById(req.params.id);
+      if (!project) return res.status(404).json({ error: 'Projet introuvable.' });
+      const isGlobalAdmin = req.user!.role === 'admin';
+      const canAdmin = await db.userIsWorkspaceAdmin(req.user!.id, project.workspace_id, isGlobalAdmin);
+      if (!canAdmin) {
+        return res.status(403).json({ error: 'Seul un administrateur du workspace peut retirer un membre du projet.' });
+      }
+      await db.removeProjectMember(req.params.id, req.params.userId);
+      res.json({ success: true });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message || 'Erreur lors du retrait du membre du projet.' });
     }
   });
 
@@ -666,7 +809,7 @@ export function createApp() {
       if (!canAccess) {
         return res.status(403).json({ error: 'Accès refusé à ce projet.' });
       }
-      const { title, description, status, priority, assignee_id, due_date, tag_ids } = req.body;
+      const { title, description, status, priority, assignee_id, start_at, end_at, estimated_minutes, tag_ids } = req.body;
       if (!title) {
         return res.status(400).json({ error: 'Le titre de la tâche est requis.' });
       }
@@ -677,7 +820,9 @@ export function createApp() {
         status: status || 'a_faire',
         priority: priority || 'normale',
         assignee_id,
-        due_date,
+        start_at,
+        end_at,
+        estimated_minutes,
         created_by: req.user!.id,
         tag_ids,
       });
@@ -746,14 +891,17 @@ export function createApp() {
         }
       }
 
-      const { title, description, status, priority, assignee_id, due_date, tag_ids, position } = req.body;
+      const { title, description, status, priority, assignee_id, start_at, end_at, stopped_at, estimated_minutes, tag_ids, position } = req.body;
       const updated = await db.updateTask(req.params.id, {
         title,
         description,
         status,
         priority,
         assignee_id,
-        due_date,
+        start_at,
+        end_at,
+        stopped_at,
+        estimated_minutes,
         tag_ids,
         position,
       });
@@ -1034,6 +1182,29 @@ export function createApp() {
     }
   });
 
+  // Time Allocation ("Mon Temps" screen): my own workspaces/projects/tasks
+  app.get('/api/time/allocation', authMiddleware, async (req: AuthenticatedRequest, res) => {
+    try {
+      const workspaces = await db.getMemberTimeAllocation(req.user!.id);
+      res.json(workspaces);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message || "Erreur lors de la récupération de l'allocation de temps." });
+    }
+  });
+
+  // Time Allocation: every member's breakdown (global admin only)
+  app.get('/api/time/allocation/all', authMiddleware, async (req: AuthenticatedRequest, res) => {
+    if (req.user!.role !== 'admin') {
+      return res.status(403).json({ error: 'Action réservée aux administrateurs.' });
+    }
+    try {
+      const allMembers = await db.getAllMembersTimeAllocation();
+      res.json(allMembers);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message || "Erreur lors de la récupération de l'allocation de temps." });
+    }
+  });
+
   // --- Messaging: Conversations & Messages ---
 
   // List all conversations for the current user (most recent activity first)
@@ -1083,7 +1254,7 @@ export function createApp() {
   // Send a message in a conversation
   app.post('/api/conversations/:id/messages', authMiddleware, async (req: AuthenticatedRequest, res) => {
     const conversationId = req.params.id;
-    const { content } = req.body;
+    const { content, reply_to_id } = req.body;
     if (!content || !content.trim()) {
       return res.status(400).json({ error: 'Le contenu du message est requis.' });
     }
@@ -1092,7 +1263,7 @@ export function createApp() {
       if (!isParticipant) {
         return res.status(403).json({ error: 'Accès refusé à cette conversation.' });
       }
-      const message = await db.sendMessage(conversationId, req.user!.id, content);
+      const message = await db.sendMessage(conversationId, req.user!.id, content, reply_to_id);
       res.status(201).json(message);
     } catch (err: any) {
       res.status(500).json({ error: err.message || 'Erreur lors de l’envoi du message.' });

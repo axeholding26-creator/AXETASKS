@@ -6,6 +6,7 @@ import { api } from '../../lib/api';
 import { Project, User, Tag, TaskPriority, TaskStatus } from '../../types';
 import { X, Plus, Tag as TagIcon, Check } from 'lucide-react';
 import { CalendarPicker } from '../common/CalendarPicker';
+import { combineDateAndTime } from '../../lib/datetime';
 
 export const CreateTaskModal: React.FC = () => {
   const { user } = useAuth();
@@ -25,7 +26,10 @@ export const CreateTaskModal: React.FC = () => {
   const [priority, setPriority] = useState<TaskPriority>('normale');
   const [projectId, setProjectId] = useState<string>('');
   const [assigneeId, setAssigneeId] = useState<string>('');
-  const [dueDate, setDueDate] = useState<string>('');
+  const [startDate, setStartDate] = useState<string>('');
+  const [startTime, setStartTime] = useState<string>('09:00');
+  const [endDate, setEndDate] = useState<string>('');
+  const [endTime, setEndTime] = useState<string>('18:00');
   const [selectedTagIds, setSelectedTagIds] = useState<string[]>([]);
 
   const [projects, setProjects] = useState<Project[]>([]);
@@ -42,7 +46,10 @@ export const CreateTaskModal: React.FC = () => {
       setPriority('normale');
       setProjectId(currentProject?.id || '');
       setAssigneeId(user?.id || '');
-      setDueDate(new Date().toISOString().split('T')[0]);
+      setStartDate(new Date().toISOString().split('T')[0]);
+      setStartTime('09:00');
+      setEndDate('');
+      setEndTime('18:00');
       setSelectedTagIds([]);
       setError('');
 
@@ -86,7 +93,8 @@ export const CreateTaskModal: React.FC = () => {
         status,
         priority,
         assignee_id: assigneeId || undefined,
-        due_date: dueDate || undefined,
+        start_at: combineDateAndTime(startDate, startTime),
+        end_at: combineDateAndTime(endDate, endTime),
         tag_ids: selectedTagIds,
       });
 
@@ -207,8 +215,8 @@ export const CreateTaskModal: React.FC = () => {
             />
           </div>
 
-          {/* Status, Priority & Due Date */}
-          <div className="grid grid-cols-3 gap-2.5">
+          {/* Status & Priority */}
+          <div className="grid grid-cols-2 gap-2.5">
             <div>
               <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">
                 Statut
@@ -241,15 +249,37 @@ export const CreateTaskModal: React.FC = () => {
                 <option value="urgente">Urgente</option>
               </select>
             </div>
+          </div>
 
+          {/* Start / End date & time */}
+          <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">
-                Échéance
+                Début (date et heure)
               </label>
-              <CalendarPicker
-                value={dueDate}
-                onChange={setDueDate}
-              />
+              <div className="space-y-1.5">
+                <CalendarPicker value={startDate} onChange={setStartDate} placeholder="Date de début" />
+                <input
+                  type="time"
+                  value={startTime}
+                  onChange={e => setStartTime(e.target.value)}
+                  className="w-full px-2.5 py-1.5 rounded bg-[#090D16] border border-[#1E293B] text-xs text-slate-200 focus:outline-none focus:border-[#2563EB]/60"
+                />
+              </div>
+            </div>
+            <div>
+              <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">
+                Fin (date et heure)
+              </label>
+              <div className="space-y-1.5">
+                <CalendarPicker value={endDate} onChange={setEndDate} placeholder="Date de fin" />
+                <input
+                  type="time"
+                  value={endTime}
+                  onChange={e => setEndTime(e.target.value)}
+                  className="w-full px-2.5 py-1.5 rounded bg-[#090D16] border border-[#1E293B] text-xs text-slate-200 focus:outline-none focus:border-[#2563EB]/60"
+                />
+              </div>
             </div>
           </div>
 

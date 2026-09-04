@@ -4,19 +4,21 @@ import { useWorkspace } from '../../context/WorkspaceContext';
 import { useToast } from '../../context/ToastContext';
 import { SoundEffectType } from '../../lib/sound';
 import { api } from '../../lib/api';
-import { WorkspaceMember, Tag, WorkspaceRole, User as UserType } from '../../types';
+import { resizeImageToDataUrl } from '../../lib/image';
+import { WorkspaceMember, ProjectMember, Tag, WorkspaceRole, User as UserType, JobFunction, Project } from '../../types';
 import { Avatar } from '../common/Avatar';
 import { ConfirmDialog, useConfirm } from '../common/ConfirmDialog';
 import { RoleBadge } from '../common/Badge';
-import { 
-  Settings, 
-  Users, 
-  Tag as TagIcon, 
-  UserPlus, 
-  Trash2, 
-  Shield, 
-  Plus, 
-  Briefcase, 
+import { EditProjectModal } from '../common/EditModal';
+import {
+  Settings,
+  Users,
+  Tag as TagIcon,
+  UserPlus,
+  Trash2,
+  Shield,
+  Plus,
+  Briefcase,
   CheckCircle2,
   AlertTriangle,
   UserCheck,
@@ -31,7 +33,11 @@ import {
   Radio,
   Play,
   Sliders,
-  BellRing
+  BellRing,
+  Layers,
+  FolderGit2,
+  Edit2,
+  ArrowRight
 } from 'lucide-react';
 
 const PRESET_COLORS = [
@@ -40,7 +46,15 @@ const PRESET_COLORS = [
 
 export const SettingsView: React.FC = () => {
   const { user, updateProfile, changePassword } = useAuth();
-  const { currentWorkspace, refreshWorkspaces } = useWorkspace();
+  const {
+    currentWorkspace,
+    workspaces,
+    refreshWorkspaces,
+    setCurrentWorkspaceId,
+    setIsCreateWorkspaceModalOpen,
+    setIsCreateProjectModalOpen,
+    bumpProjectVersion,
+  } = useWorkspace();
   const { 
     notify, 
     soundEnabled, 
@@ -51,10 +65,21 @@ export const SettingsView: React.FC = () => {
   } = useToast();
   const { confirmProps, confirm } = useConfirm();
 
+  // Shows an inline success/error message, then clears it after 3s so it
+  // never lingers on screen.
+  const flash = (setter: (v: string) => void, message: string, ms = 3000) => {
+    setter(message);
+    if (message) setTimeout(() => setter(''), ms);
+  };
+
   const isGlobalAdmin = user?.role === 'admin';
   const isWorkspaceAdmin = isGlobalAdmin || currentWorkspace?.my_role === 'admin';
+  // Whether this user administers at least one workspace — gates the
+  // "Espaces" and "Projets" management tabs independently of whichever
+  // workspace happens to be selected right now.
+  const canManageAnyWorkspace = isGlobalAdmin || workspaces.some(w => w.my_role === 'admin');
 
-  const [activeTab, setActiveTab] = useState<'profile' | 'members' | 'tags' | 'workspace' | 'all_users' | 'notifications'>(
+  const [activeTab, setActiveTab] = useState<'profile' | 'members' | 'tags' | 'espaces' | 'projects' | 'all_users' | 'notifications'>(
     isGlobalAdmin ? 'all_users' : 'members'
   );
 
@@ -91,6 +116,7 @@ export const SettingsView: React.FC = () => {
   const [newUserEmail, setNewUserEmail] = useState('');
   const [newUserPassword, setNewUserPassword] = useState('password123');
   const [newUserRole, setNewUserRole] = useState<'admin' | 'member'>('member');
+  const [newUserFunctionId, setNewUserFunctionId] = useState('');
   const [userAdminError, setUserAdminError] = useState('');
   const [userAdminSuccess, setUserAdminSuccess] = useState('');
   const [userToDelete, setUserToDelete] = useState<UserType | null>(null);
@@ -101,27 +127,50 @@ export const SettingsView: React.FC = () => {
   const [newTagName, setNewTagName] = useState('');
   const [newTagColor, setNewTagColor] = useState('#2563EB');
 
+  // Projects state (scoped to currentWorkspace)
+  const [projects, setProjects] = useState<Project[]>([]);
+  const [loadingProjects, setLoadingProjects] = useState(false);
+  const [editingProject, setEditingProject] = useState<Project | null>(null);
+
+  // Project members panel (add/remove members on one specific project)
+  const [managingProject, setManagingProject] = useState<Project | null>(null);
+  const [projectMembers, setProjectMembers] = useState<ProjectMember[]>([]);
+  const [loadingProjectMembers, setLoadingProjectMembers] = useState(false);
+  const [addProjectMemberUserId, setAddProjectMemberUserId] = useState('');
+
   // Workspace edit state
   const [wsName, setWsName] = useState('');
   const [wsColor, setWsColor] = useState('#2563EB');
   const [isUpdatingWs, setIsUpdatingWs] = useState(false);
+  const [isUploadingWsPhoto, setIsUploadingWsPhoto] = useState(false);
+
+  // Avatar upload
+  const [isUploadingAvatar, setIsUploadingAvatar] = useState(false);
+
+  // Job functions state (admin only)
+  const [jobFunctions, setJobFunctions] = useState<JobFunction[]>([]);
+  const [newFunctionName, setNewFunctionName] = useState('');
 
   const loadData = async () => {
     if (!currentWorkspace) return;
     try {
       setLoadingMembers(true);
-      const [mems, tgs] = await Promise.all([
+      setLoadingProjects(true);
+      const [mems, tgs, prjs] = await Promise.all([
         api.getWorkspaceMembers(currentWorkspace.id),
         api.getWorkspaceTags(currentWorkspace.id),
+        api.getWorkspaceProjects(currentWorkspace.id),
       ]);
       setMembers(mems);
       setTags(tgs);
+      setProjects(prjs);
       setWsName(currentWorkspace.name);
       setWsColor(currentWorkspace.color);
     } catch (err) {
       console.error(err);
     } finally {
       setLoadingMembers(false);
+      setLoadingProjects(false);
     }
   };
 
@@ -140,13 +189,91 @@ export const SettingsView: React.FC = () => {
 
   useEffect(() => {
     loadData();
+    setManagingProject(null);
+    setEditingProject(null);
   }, [currentWorkspace?.id]);
+
+  const loadJobFunctions = async () => {
+    try {
+      const list = await api.getJobFunctions();
+      setJobFunctions(list);
+    } catch (err) {
+      console.error(err);
+    }
+  };
 
   useEffect(() => {
     if (isGlobalAdmin) {
       loadAllUsers();
+      loadJobFunctions();
     }
   }, [isGlobalAdmin]);
+
+  // Profile: upload & compress an avatar image, then save it immediately
+  const handleAvatarChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file || !user) return;
+    try {
+      setIsUploadingAvatar(true);
+      const dataUrl = await resizeImageToDataUrl(file, 400, 0.82);
+      await updateProfile(profileName.trim() || user.name, undefined, dataUrl);
+      flash(setProfileSuccess, 'Photo de profil mise à jour.');
+    } catch (err: any) {
+      flash(setProfileError, err.message || "Erreur lors de l'envoi de la photo.");
+    } finally {
+      setIsUploadingAvatar(false);
+    }
+  };
+
+  // Workspace: upload & compress a workspace photo (admin only)
+  const handleWorkspacePhotoChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file || !currentWorkspace) return;
+    try {
+      setIsUploadingWsPhoto(true);
+      const dataUrl = await resizeImageToDataUrl(file, 500, 0.85);
+      await api.updateWorkspace(currentWorkspace.id, { photo_url: dataUrl });
+      await refreshWorkspaces();
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setIsUploadingWsPhoto(false);
+    }
+  };
+
+  // Admin: job functions CRUD
+  const handleCreateFunction = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newFunctionName.trim()) return;
+    try {
+      await api.createJobFunction(newFunctionName.trim());
+      setNewFunctionName('');
+      loadJobFunctions();
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  const handleDeleteFunction = async (id: string) => {
+    try {
+      await api.deleteJobFunction(id);
+      loadJobFunctions();
+      loadAllUsers();
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  const handleAssignFunction = async (userId: string, functionId: string) => {
+    try {
+      await api.setUserFunction(userId, functionId || null);
+      loadAllUsers();
+    } catch (err) {
+      console.error(err);
+    }
+  };
 
   // Save personal profile (name + email)
   const handleSaveProfile = async (e: React.FormEvent) => {
@@ -154,15 +281,15 @@ export const SettingsView: React.FC = () => {
     setProfileError('');
     setProfileSuccess('');
     if (!profileName.trim() || !profileEmail.trim()) {
-      setProfileError('Le nom et l\'email ne peuvent pas être vides.');
+      flash(setProfileError, 'Le nom et l\'email ne peuvent pas être vides.');
       return;
     }
     try {
       setIsSavingProfile(true);
       await updateProfile(profileName.trim(), profileEmail.trim());
-      setProfileSuccess('Vos informations ont été mises à jour.');
+      flash(setProfileSuccess, 'Vos informations ont été mises à jour.');
     } catch (err: any) {
-      setProfileError(err.message || 'Erreur lors de la mise à jour du profil.');
+      flash(setProfileError, err.message || 'Erreur lors de la mise à jour du profil.');
     } finally {
       setIsSavingProfile(false);
     }
@@ -174,22 +301,22 @@ export const SettingsView: React.FC = () => {
     setPasswordError('');
     setPasswordSuccess('');
     if (newPassword.length < 6) {
-      setPasswordError('Le nouveau mot de passe doit comporter au moins 6 caractères.');
+      flash(setPasswordError, 'Le nouveau mot de passe doit comporter au moins 6 caractères.');
       return;
     }
     if (newPassword !== confirmPassword) {
-      setPasswordError('Les deux mots de passe ne correspondent pas.');
+      flash(setPasswordError, 'Les deux mots de passe ne correspondent pas.');
       return;
     }
     try {
       setIsChangingPassword(true);
       await changePassword(currentPassword, newPassword);
-      setPasswordSuccess('Votre mot de passe a été changé avec succès.');
+      flash(setPasswordSuccess, 'Votre mot de passe a été changé avec succès.');
       setCurrentPassword('');
       setNewPassword('');
       setConfirmPassword('');
     } catch (err: any) {
-      setPasswordError(err.message || 'Erreur lors du changement de mot de passe.');
+      flash(setPasswordError, err.message || 'Erreur lors du changement de mot de passe.');
     } finally {
       setIsChangingPassword(false);
     }
@@ -204,11 +331,11 @@ export const SettingsView: React.FC = () => {
 
     try {
       await api.addWorkspaceMember(currentWorkspace.id, inviteEmail.trim(), inviteRole);
-      setInviteSuccess(`Membre ${inviteEmail} ajouté avec succès !`);
+      flash(setInviteSuccess, `Membre ${inviteEmail} ajouté avec succès !`);
       setInviteEmail('');
       loadData();
     } catch (err: any) {
-      setInviteError(err.message || "Erreur lors de l'ajout du membre.");
+      flash(setInviteError, err.message || "Erreur lors de l'ajout du membre.");
     }
   };
 
@@ -252,16 +379,18 @@ export const SettingsView: React.FC = () => {
         email: newUserEmail.trim(),
         password: newUserPassword || 'password123',
         role: newUserRole,
+        function_id: newUserFunctionId || null,
       });
-      setUserAdminSuccess(`Utilisateur ${newUserName} créé avec succès !`);
+      flash(setUserAdminSuccess, `Utilisateur ${newUserName} créé avec succès !`);
       setNewUserName('');
       setNewUserEmail('');
       setNewUserPassword('password123');
       setNewUserRole('member');
+      setNewUserFunctionId('');
       loadAllUsers();
       loadData();
     } catch (err: any) {
-      setUserAdminError(err.message || 'Erreur lors de la création du profil.');
+      flash(setUserAdminError, err.message || 'Erreur lors de la création du profil.');
     }
   };
 
@@ -282,12 +411,12 @@ export const SettingsView: React.FC = () => {
       setIsDeletingUser(true);
       setUserAdminError('');
       await api.deleteUser(userToDelete.id);
-      setUserAdminSuccess(`Le profil utilisateur de ${userToDelete.name} a été supprimé avec succès.`);
+      flash(setUserAdminSuccess, `Le profil utilisateur de ${userToDelete.name} a été supprimé avec succès.`);
       setUserToDelete(null);
       await loadAllUsers();
       await loadData();
     } catch (err: any) {
-      setUserAdminError(err.message || 'Erreur lors de la suppression du profil.');
+      flash(setUserAdminError, err.message || 'Erreur lors de la suppression du profil.');
     } finally {
       setIsDeletingUser(false);
     }
@@ -313,6 +442,99 @@ export const SettingsView: React.FC = () => {
       loadData();
     } catch (err) {
       console.error(err);
+    }
+  };
+
+  // Save edits made to a project (name, description, status, dates)
+  const handleSaveProjectEdit = async (data: { name: string; description: string; start_at?: string; end_at?: string; status: string }) => {
+    if (!editingProject) return;
+    await api.updateProject(editingProject.id, {
+      name: data.name,
+      description: data.description || undefined,
+      start_at: data.start_at,
+      end_at: data.end_at,
+      status: data.status as any,
+    });
+    setEditingProject(null);
+    loadData();
+    bumpProjectVersion();
+  };
+
+  // Delete a project (workspace admin only)
+  const handleDeleteProject = async (project: Project) => {
+    const ok = await confirm({
+      title: `Supprimer le projet "${project.name}"`,
+      message: 'Cette action est DÉFINITIVE.\n\nToutes les tâches de ce projet seront détruites définitivement.',
+      confirmLabel: 'Supprimer définitivement',
+      variant: 'danger',
+    });
+    if (!ok) return;
+    try {
+      await api.deleteProject(project.id);
+      loadData();
+      bumpProjectVersion();
+    } catch (err: any) {
+      alert(err.message || 'Erreur lors de la suppression du projet.');
+    }
+  };
+
+  // Switch the app-wide current workspace, then jump to a given Settings tab
+  const handleManageWorkspace = (workspaceId: string, tab: 'espaces' | 'projects' | 'members' | 'tags' = 'espaces') => {
+    setCurrentWorkspaceId(workspaceId);
+    setActiveTab(tab);
+  };
+
+  // Delete any workspace by id (admin of that workspace only — used from the
+  // "Espaces" directory, not just the currently selected one)
+  const handleDeleteWorkspaceById = async (workspaceId: string, workspaceName: string) => {
+    const ok = await confirm({
+      title: `Supprimer l'espace "${workspaceName}"`,
+      message: 'Cette action est DÉFINITIVE.\n\nTous les projets, tâches et données associés seront détruits définitivement.',
+      confirmLabel: 'Supprimer définitivement',
+      variant: 'danger',
+    });
+    if (!ok) return;
+    try {
+      await api.deleteWorkspace(workspaceId);
+      await refreshWorkspaces();
+    } catch (err: any) {
+      alert(err.message || "Erreur lors de la suppression de l'espace.");
+    }
+  };
+
+  // Project members: open the panel and load its current roster
+  const handleOpenProjectMembers = async (project: Project) => {
+    setManagingProject(project);
+    setAddProjectMemberUserId('');
+    try {
+      setLoadingProjectMembers(true);
+      const list = await api.getProjectMembers(project.id);
+      setProjectMembers(list);
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setLoadingProjectMembers(false);
+    }
+  };
+
+  const handleAddProjectMember = async () => {
+    if (!managingProject || !addProjectMemberUserId) return;
+    try {
+      await api.addProjectMember(managingProject.id, addProjectMemberUserId);
+      setAddProjectMemberUserId('');
+      handleOpenProjectMembers(managingProject);
+    } catch (err: any) {
+      alert(err.message || "Erreur lors de l'ajout du membre au projet.");
+    }
+  };
+
+  const handleRemoveProjectMember = async (userId: string) => {
+    if (!managingProject) return;
+    try {
+      await api.removeProjectMember(managingProject.id, userId);
+      handleOpenProjectMembers(managingProject);
+    } catch (err: any) {
+      alert(err.message || 'Erreur lors du retrait du membre du projet.');
     }
   };
 
@@ -360,7 +582,7 @@ export const SettingsView: React.FC = () => {
 
   const noWorkspaceNotice = (
     <div className="p-8 text-center text-slate-400 text-xs">
-      Veuillez sélectionner un espace de travail pour gérer ses membres, tags ou détails.
+      Veuillez sélectionner un espace de travail pour gérer ses projets, membres, tags ou détails.
     </div>
   );
 
@@ -377,7 +599,7 @@ export const SettingsView: React.FC = () => {
           {currentWorkspace ? `Paramètres — ${currentWorkspace.name}` : 'Paramètres'}
         </h1>
         <p className="text-xs text-slate-400 mt-0.5">
-          Gérez votre profil, les accès collaborateurs, les rôles RBAC et les taxonomies.
+          Gérez vos espaces de travail, projets, membres, tags et votre profil.
         </p>
       </div>
 
@@ -395,17 +617,31 @@ export const SettingsView: React.FC = () => {
           <span>Mon Profil</span>
         </button>
 
-        {isGlobalAdmin && (
+        {canManageAnyWorkspace && (
           <button
-            onClick={() => setActiveTab('all_users')}
+            onClick={() => setActiveTab('espaces')}
             className={`flex items-center gap-2 px-3 py-1.5 rounded text-xs font-bold transition-colors whitespace-nowrap ${
-              activeTab === 'all_users'
+              activeTab === 'espaces'
                 ? 'bg-[#2563EB]/20 text-[#60A5FA] border border-[#2563EB]/40'
                 : 'text-slate-400 hover:text-slate-200'
             }`}
           >
-            <ShieldCheck className="w-3.5 h-3.5 text-[#3B82F6]" />
-            <span>Gestion des Profils & Admin ({allUsers.length})</span>
+            <Layers className="w-3.5 h-3.5 text-[#3B82F6]" />
+            <span>Espaces ({workspaces.length})</span>
+          </button>
+        )}
+
+        {isWorkspaceAdmin && currentWorkspace && (
+          <button
+            onClick={() => setActiveTab('projects')}
+            className={`flex items-center gap-2 px-3 py-1.5 rounded text-xs font-bold transition-colors whitespace-nowrap ${
+              activeTab === 'projects'
+                ? 'bg-[#2563EB]/20 text-[#60A5FA] border border-[#2563EB]/40'
+                : 'text-slate-400 hover:text-slate-200'
+            }`}
+          >
+            <FolderGit2 className="w-3.5 h-3.5 text-[#3B82F6]" />
+            <span>Projets ({projects.length})</span>
           </button>
         )}
 
@@ -433,17 +669,17 @@ export const SettingsView: React.FC = () => {
           <span>Tags & Labels ({tags.length})</span>
         </button>
 
-        {isWorkspaceAdmin && currentWorkspace && (
+        {isGlobalAdmin && (
           <button
-            onClick={() => setActiveTab('workspace')}
+            onClick={() => setActiveTab('all_users')}
             className={`flex items-center gap-2 px-3 py-1.5 rounded text-xs font-bold transition-colors whitespace-nowrap ${
-              activeTab === 'workspace'
+              activeTab === 'all_users'
                 ? 'bg-[#2563EB]/20 text-[#60A5FA] border border-[#2563EB]/40'
                 : 'text-slate-400 hover:text-slate-200'
             }`}
           >
-            <Briefcase className="w-3.5 h-3.5" />
-            <span>Détails de l'Espace</span>
+            <ShieldCheck className="w-3.5 h-3.5 text-[#3B82F6]" />
+            <span>Utilisateurs ({allUsers.length})</span>
           </button>
         )}
 
@@ -483,7 +719,27 @@ export const SettingsView: React.FC = () => {
             </h3>
 
             <div className="flex items-center gap-3 pb-1">
-              <Avatar name={profileName || user?.name} avatarUrl={user?.avatar_url} size="lg" />
+              <label className="relative cursor-pointer group">
+                <Avatar name={profileName || user?.name} avatarUrl={user?.avatar_url} size="lg" />
+                <div className="absolute inset-0 rounded bg-black/60 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity">
+                  <span className="text-[9px] font-bold text-white uppercase">
+                    {isUploadingAvatar ? '...' : 'Modifier'}
+                  </span>
+                </div>
+                <input
+                  type="file"
+                  accept="image/*"
+                  onChange={handleAvatarChange}
+                  disabled={isUploadingAvatar}
+                  className="hidden"
+                />
+              </label>
+              <div className="text-[10px] text-slate-500">
+                Cliquez sur la photo pour la changer.
+                {user?.job_function && (
+                  <p className="text-slate-400 font-semibold mt-0.5">Fonction : {user.job_function.name}</p>
+                )}
+              </div>
             </div>
 
             <form onSubmit={handleSaveProfile} className="space-y-3">
@@ -615,8 +871,8 @@ export const SettingsView: React.FC = () => {
               En tant qu'administrateur, vous pouvez enregistrer directement de nouveaux profils avec leur rôle système.
             </p>
 
-            <form onSubmit={handleCreateUser} className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-2.5 pt-1">
-              <div>
+            <form onSubmit={handleCreateUser} className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5 pt-1">
+              <div className="min-w-0">
                 <label className="block text-[10px] font-bold uppercase text-slate-400 mb-1">Nom complet</label>
                 <input
                   type="text"
@@ -624,11 +880,11 @@ export const SettingsView: React.FC = () => {
                   placeholder="ex: Jean Dupont"
                   value={newUserName}
                   onChange={e => setNewUserName(e.target.value)}
-                  className="w-full px-3 py-1.5 rounded bg-[#090D16] border border-[#1E293B] text-xs text-slate-200 placeholder-slate-500 focus:outline-none focus:border-[#2563EB]/50"
+                  className="w-full min-w-0 px-3 py-1.5 rounded bg-[#090D16] border border-[#1E293B] text-xs text-slate-200 placeholder-slate-500 focus:outline-none focus:border-[#2563EB]/50"
                 />
               </div>
 
-              <div>
+              <div className="min-w-0">
                 <label className="block text-[10px] font-bold uppercase text-slate-400 mb-1">Email</label>
                 <input
                   type="email"
@@ -636,41 +892,98 @@ export const SettingsView: React.FC = () => {
                   placeholder="jean@axetask.com"
                   value={newUserEmail}
                   onChange={e => setNewUserEmail(e.target.value)}
-                  className="w-full px-3 py-1.5 rounded bg-[#090D16] border border-[#1E293B] text-xs text-slate-200 placeholder-slate-500 focus:outline-none focus:border-[#2563EB]/50"
+                  className="w-full min-w-0 px-3 py-1.5 rounded bg-[#090D16] border border-[#1E293B] text-xs text-slate-200 placeholder-slate-500 focus:outline-none focus:border-[#2563EB]/50"
                 />
               </div>
 
-              <div>
+              <div className="min-w-0">
                 <label className="block text-[10px] font-bold uppercase text-slate-400 mb-1">Mot de passe</label>
                 <input
                   type="text"
                   placeholder="password123"
                   value={newUserPassword}
                   onChange={e => setNewUserPassword(e.target.value)}
-                  className="w-full px-3 py-1.5 rounded bg-[#090D16] border border-[#1E293B] text-xs text-slate-200 placeholder-slate-500 focus:outline-none focus:border-[#2563EB]/50 font-mono"
+                  className="w-full min-w-0 px-3 py-1.5 rounded bg-[#090D16] border border-[#1E293B] text-xs text-slate-200 placeholder-slate-500 focus:outline-none focus:border-[#2563EB]/50 font-mono"
                 />
               </div>
 
-              <div>
+              <div className="min-w-0">
                 <label className="block text-[10px] font-bold uppercase text-slate-400 mb-1">Rôle global</label>
-                <div className="flex gap-2">
-                  <select
-                    value={newUserRole}
-                    onChange={e => setNewUserRole(e.target.value as 'admin' | 'member')}
-                    className="flex-1 px-3 py-1.5 rounded bg-[#090D16] border border-[#1E293B] text-xs font-semibold text-slate-200 focus:outline-none focus:border-[#2563EB]/50 cursor-pointer"
-                  >
-                    <option value="member">Membre</option>
-                    <option value="admin">Administrateur</option>
-                  </select>
-
-                  <button
-                    type="submit"
-                    className="px-4 py-1.5 rounded bg-[#2563EB] hover:bg-[#1D4ED8] text-white font-bold text-xs shadow-sm shadow-blue-500/25 transition-all whitespace-nowrap"
-                  >
-                    Créer
-                  </button>
-                </div>
+                <select
+                  value={newUserRole}
+                  onChange={e => setNewUserRole(e.target.value as 'admin' | 'member')}
+                  className="w-full min-w-0 px-3 py-1.5 rounded bg-[#090D16] border border-[#1E293B] text-xs font-semibold text-slate-200 focus:outline-none focus:border-[#2563EB]/50 cursor-pointer"
+                >
+                  <option value="member">Membre</option>
+                  <option value="admin">Administrateur</option>
+                </select>
               </div>
+
+              <div className="min-w-0">
+                <label className="block text-[10px] font-bold uppercase text-slate-400 mb-1">Fonction</label>
+                <select
+                  value={newUserFunctionId}
+                  onChange={e => setNewUserFunctionId(e.target.value)}
+                  className="w-full min-w-0 px-3 py-1.5 rounded bg-[#090D16] border border-[#1E293B] text-xs font-semibold text-slate-200 focus:outline-none focus:border-[#2563EB]/50 cursor-pointer"
+                >
+                  <option value="">Aucune</option>
+                  {jobFunctions.map(fn => (
+                    <option key={fn.id} value={fn.id}>{fn.name}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="min-w-0 flex items-end">
+                <button
+                  type="submit"
+                  className="w-full px-4 py-1.5 rounded bg-[#2563EB] hover:bg-[#1D4ED8] text-white font-bold text-xs shadow-sm shadow-blue-500/25 transition-all"
+                >
+                  Créer le compte
+                </button>
+              </div>
+            </form>
+          </div>
+
+          {/* Job Functions Card */}
+          <div className="p-4 rounded bg-[#0F172A] border border-[#1E293B] space-y-3">
+            <h3 className="text-xs font-bold text-slate-200 uppercase tracking-wide flex items-center gap-2">
+              <ShieldCheck className="w-4 h-4 text-[#3B82F6]" />
+              <span>Fonctions / Postes de l'entreprise</span>
+            </h3>
+            <p className="text-xs text-slate-400">
+              Gérez la liste des fonctions assignables aux membres depuis le répertoire ci-dessous.
+            </p>
+            <div className="flex flex-wrap gap-2">
+              {jobFunctions.map(fn => (
+                <span
+                  key={fn.id}
+                  className="flex items-center gap-1.5 text-xs px-2.5 py-1 rounded bg-[#090D16] border border-[#1E293B] text-slate-200"
+                >
+                  {fn.name}
+                  <button
+                    onClick={() => handleDeleteFunction(fn.id)}
+                    className="text-slate-500 hover:text-rose-400"
+                    title="Supprimer cette fonction"
+                  >
+                    <Trash2 className="w-3 h-3" />
+                  </button>
+                </span>
+              ))}
+            </div>
+            <form onSubmit={handleCreateFunction} className="flex items-center gap-2 pt-1">
+              <input
+                type="text"
+                value={newFunctionName}
+                onChange={e => setNewFunctionName(e.target.value)}
+                placeholder="ex: Chef de projet"
+                className="flex-1 max-w-xs px-3 py-1.5 rounded bg-[#090D16] border border-[#1E293B] text-xs text-slate-200 placeholder-slate-500 focus:outline-none focus:border-[#2563EB]/50"
+              />
+              <button
+                type="submit"
+                className="px-3 py-1.5 rounded bg-[#1E293B] hover:bg-[#334155] text-[#60A5FA] border border-[#1E293B] font-bold text-xs transition-colors"
+              >
+                Ajouter
+              </button>
             </form>
           </div>
 
@@ -737,6 +1050,21 @@ export const SettingsView: React.FC = () => {
 
                       {/* Controls & Actions */}
                       <div className="flex items-center gap-3 self-end sm:self-center">
+                        {/* Function selector — admin-only control; members cannot self-edit */}
+                        <div className="flex items-center gap-1.5">
+                          <label className="text-[10px] text-slate-400 uppercase font-bold">Fonction :</label>
+                          <select
+                            value={profile.function_id || ''}
+                            onChange={e => handleAssignFunction(profile.id, e.target.value)}
+                            className="px-2.5 py-1 rounded bg-[#090D16] border border-[#1E293B] text-xs font-semibold text-slate-300 focus:outline-none focus:border-[#2563EB]/50 cursor-pointer"
+                          >
+                            <option value="">Aucune</option>
+                            {jobFunctions.map(fn => (
+                              <option key={fn.id} value={fn.id}>{fn.name}</option>
+                            ))}
+                          </select>
+                        </div>
+
                         {/* Role selector */}
                         <div className="flex items-center gap-1.5">
                           <label className="text-[10px] text-slate-400 uppercase font-bold">Rôle :</label>
@@ -857,11 +1185,15 @@ export const SettingsView: React.FC = () => {
                         )}
                       </div>
                       <p className="text-[11px] text-slate-400 font-mono">{member.user?.email}</p>
+                      <p className="text-[11px] text-slate-500">
+                        Fonction : <span className="text-slate-400 font-semibold">{member.user?.job_function?.name || '—'}</span>
+                      </p>
                     </div>
                   </div>
 
                   <div className="flex items-center gap-2.5">
-                    {/* Role selector */}
+                    {/* Role selector — workspace admins only; plain members
+                        only ever see the read-only RoleBadge below. */}
                     {isWorkspaceAdmin && member.user_id !== user?.id ? (
                       <select
                         value={member.role}
@@ -972,74 +1304,344 @@ export const SettingsView: React.FC = () => {
         </div>
       )}
 
-      {/* TAB: WORKSPACE SETTINGS */}
-      {activeTab === 'workspace' && isWorkspaceAdmin && currentWorkspace && (
-        <>
-          <form onSubmit={handleSaveWorkspace} className="space-y-4">
-          <div className="p-4 rounded bg-[#0F172A] border border-[#1E293B] space-y-3.5">
-            <h3 className="text-xs font-bold text-slate-200 uppercase tracking-wide">
-              Personnalisation de l'espace
-            </h3>
-
-            <div>
-              <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1">Nom de l'espace</label>
-              <input
-                type="text"
-                required
-                value={wsName}
-                onChange={e => setWsName(e.target.value)}
-                className="w-full sm:w-80 px-3 py-1.5 rounded bg-[#090D16] border border-[#1E293B] text-xs text-slate-200 focus:outline-none focus:border-[#2563EB]/50"
-              />
+      {/* TAB: ESPACES — directory of every accessible workspace + detail
+          panel for whichever one is currently selected app-wide. */}
+      {activeTab === 'espaces' && canManageAnyWorkspace && (
+        <div className="space-y-4">
+          <div className="bg-[#0F172A] border border-[#1E293B] rounded overflow-hidden">
+            <div className="p-3 border-b border-[#1E293B] bg-[#0B1120] flex items-center justify-between gap-3">
+              <h3 className="text-[10px] font-bold uppercase tracking-wider text-slate-300">
+                Tous les espaces ({workspaces.length})
+              </h3>
+              {isGlobalAdmin && (
+                <button
+                  onClick={() => setIsCreateWorkspaceModalOpen(true)}
+                  className="flex items-center gap-1.5 px-3 py-1 rounded bg-[#2563EB] hover:bg-[#1D4ED8] text-white font-bold text-xs shadow-sm shadow-blue-500/25 transition-all whitespace-nowrap"
+                >
+                  <Plus className="w-3.5 h-3.5" />
+                  <span>Nouvel espace</span>
+                </button>
+              )}
             </div>
 
-            <div>
-              <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1.5">Couleur thématique</label>
-              <div className="flex items-center gap-2">
-                {PRESET_COLORS.map(c => (
+            <div className="divide-y divide-[#1E293B]">
+              {workspaces.map(ws => (
+                <div
+                  key={ws.id}
+                  className={`p-3 flex items-center justify-between gap-3 transition-colors ${currentWorkspace?.id === ws.id ? 'bg-[#2563EB]/5' : ''}`}
+                >
+                  <div className="flex items-center gap-3 min-w-0">
+                    <div
+                      className="w-10 h-10 rounded-lg overflow-hidden shrink-0 flex items-center justify-center"
+                      style={{ backgroundColor: `${ws.color}20`, border: `1px solid ${ws.color}40` }}
+                    >
+                      {ws.photo_url ? (
+                        <img src={ws.photo_url} alt={ws.name} className="w-full h-full object-cover" />
+                      ) : (
+                        <Briefcase className="w-4 h-4" style={{ color: ws.color }} />
+                      )}
+                    </div>
+                    <div className="min-w-0">
+                      <p className="text-xs font-bold text-slate-100 truncate">{ws.name}</p>
+                      <p className="text-[10px] text-slate-500">
+                        {ws.member_count || 0} membre{(ws.member_count || 0) > 1 ? 's' : ''} · {ws.projects_count || 0} projet{(ws.projects_count || 0) > 1 ? 's' : ''} · {ws.my_role === 'admin' ? 'Admin' : 'Membre'}
+                      </p>
+                    </div>
+                  </div>
+
+                  {ws.my_role === 'admin' && (
+                    <div className="flex items-center gap-2 shrink-0 flex-wrap justify-end">
+                      <button
+                        onClick={() => handleManageWorkspace(ws.id, 'espaces')}
+                        className="flex items-center gap-1 px-2.5 py-1 rounded bg-[#1E293B] hover:bg-[#334155] text-[#60A5FA] text-xs font-bold transition-colors"
+                      >
+                        <Edit2 className="w-3 h-3" />
+                        <span>Gérer</span>
+                      </button>
+                      <button
+                        onClick={() => handleManageWorkspace(ws.id, 'members')}
+                        className="flex items-center gap-1 px-2.5 py-1 rounded bg-[#1E293B] hover:bg-[#334155] text-[#60A5FA] text-xs font-bold transition-colors"
+                      >
+                        <Users className="w-3 h-3" />
+                        <span>Membres</span>
+                      </button>
+                      <button
+                        onClick={() => handleManageWorkspace(ws.id, 'projects')}
+                        className="flex items-center gap-1 px-2.5 py-1 rounded bg-[#1E293B] hover:bg-[#334155] text-[#60A5FA] text-xs font-bold transition-colors"
+                      >
+                        <FolderGit2 className="w-3 h-3" />
+                        <span>Projets</span>
+                      </button>
+                      <button
+                        onClick={() => handleDeleteWorkspaceById(ws.id, ws.name)}
+                        title="Supprimer cet espace"
+                        className="p-1.5 rounded text-slate-500 hover:text-rose-400 hover:bg-rose-500/10 transition-colors"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  )}
+                </div>
+              ))}
+
+              {workspaces.length === 0 && (
+                <div className="p-6 text-center text-xs text-slate-500">
+                  Aucun espace de travail pour l'instant.
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Detail panel for the currently selected workspace */}
+          {currentWorkspace && isWorkspaceAdmin ? (
+            <>
+              <form onSubmit={handleSaveWorkspace} className="space-y-4">
+                <div className="p-4 rounded bg-[#0F172A] border border-[#1E293B] space-y-3.5">
+                  <h3 className="text-xs font-bold text-slate-200 uppercase tracking-wide flex items-center gap-2">
+                    <ArrowRight className="w-3.5 h-3.5 text-[#3B82F6]" />
+                    <span>Modifier « {currentWorkspace.name} »</span>
+                  </h3>
+
+                  <div>
+                    <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1.5">Photo de l'espace</label>
+                    <label className="relative cursor-pointer group inline-block">
+                      <div className="w-16 h-16 rounded-lg overflow-hidden bg-[#1E293B] border border-[#2563EB]/30 flex items-center justify-center">
+                        {currentWorkspace.photo_url ? (
+                          <img src={currentWorkspace.photo_url} alt={currentWorkspace.name} className="w-full h-full object-cover" />
+                        ) : (
+                          <Briefcase className="w-6 h-6 text-[#93C5FD]" />
+                        )}
+                      </div>
+                      <div className="absolute inset-0 rounded-lg bg-black/60 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity">
+                        <span className="text-[9px] font-bold text-white uppercase">
+                          {isUploadingWsPhoto ? '...' : 'Modifier'}
+                        </span>
+                      </div>
+                      <input
+                        type="file"
+                        accept="image/*"
+                        onChange={handleWorkspacePhotoChange}
+                        disabled={isUploadingWsPhoto}
+                        className="hidden"
+                      />
+                    </label>
+                  </div>
+
+                  <div>
+                    <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1">Nom de l'espace</label>
+                    <input
+                      type="text"
+                      required
+                      value={wsName}
+                      onChange={e => setWsName(e.target.value)}
+                      className="w-full sm:w-80 px-3 py-1.5 rounded bg-[#090D16] border border-[#1E293B] text-xs text-slate-200 focus:outline-none focus:border-[#2563EB]/50"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1.5">Couleur thématique</label>
+                    <div className="flex items-center gap-2">
+                      {PRESET_COLORS.map(c => (
+                        <button
+                          key={c}
+                          type="button"
+                          onClick={() => setWsColor(c)}
+                          className={`w-7 h-7 rounded transition-transform ${wsColor === c ? 'scale-110 ring-2 ring-[#3B82F6] shadow-sm' : 'opacity-60 hover:opacity-100'}`}
+                          style={{ backgroundColor: c }}
+                        />
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="pt-2">
+                    <button
+                      type="submit"
+                      disabled={isUpdatingWs}
+                      className="px-4 py-1.5 rounded bg-[#2563EB] hover:bg-[#1D4ED8] text-white font-bold text-xs shadow-sm shadow-blue-500/25 transition-all"
+                    >
+                      {isUpdatingWs ? 'Enregistrement...' : 'Enregistrer les modifications'}
+                    </button>
+                  </div>
+                </div>
+              </form>
+
+              {/* Danger Zone */}
+              <div className="p-5 rounded-lg bg-rose-500/5 border border-rose-500/20 space-y-4">
+                <h3 className="text-sm font-bold text-rose-400 uppercase tracking-wide flex items-center gap-2">
+                  <Trash2 className="w-4 h-4" />
+                  Zone dangereuse
+                </h3>
+                <p className="text-xs text-rose-300/80 max-w-2xl leading-relaxed">
+                  La suppression d'un espace de travail est définitive. Tous les projets, tâches, tags et membres qui y sont rattachés perdront accès à ces données, et elles seront détruites de manière permanente.
+                </p>
+                <div className="pt-2">
                   <button
-                    key={c}
                     type="button"
-                    onClick={() => setWsColor(c)}
-                    className={`w-7 h-7 rounded transition-transform ${wsColor === c ? 'scale-110 ring-2 ring-[#3B82F6] shadow-sm' : 'opacity-60 hover:opacity-100'}`}
-                    style={{ backgroundColor: c }}
-                  />
-                ))}
+                    onClick={handleDeleteWorkspace}
+                    disabled={isUpdatingWs}
+                    className="px-4 py-2 rounded bg-rose-500/10 hover:bg-rose-500 text-rose-500 hover:text-white border border-rose-500/30 hover:border-rose-500 font-bold text-xs shadow-sm transition-all"
+                  >
+                    Supprimer l'espace de travail
+                  </button>
+                </div>
+              </div>
+            </>
+          ) : (
+            <div className="p-4 rounded bg-[#0F172A] border border-[#1E293B] text-xs text-slate-400">
+              Cliquez sur « Gérer » sur un espace ci-dessus pour modifier ses détails.
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* TAB: PROJETS (of the currently selected workspace) */}
+      {activeTab === 'projects' && !currentWorkspace && noWorkspaceNotice}
+      {activeTab === 'projects' && currentWorkspace && (
+        <div className="space-y-4">
+          <EditProjectModal
+            isOpen={!!editingProject}
+            initialName={editingProject?.name || ''}
+            initialDescription={editingProject?.description || ''}
+            initialStartAt={editingProject?.start_at || null}
+            initialEndAt={editingProject?.end_at || null}
+            initialStatus={editingProject?.status || 'active'}
+            onSave={handleSaveProjectEdit}
+            onClose={() => setEditingProject(null)}
+          />
+
+          <div className="bg-[#0F172A] border border-[#1E293B] rounded overflow-hidden">
+            <div className="p-3 border-b border-[#1E293B] bg-[#0B1120] flex items-center justify-between gap-3">
+              <h3 className="text-[10px] font-bold uppercase tracking-wider text-slate-300">
+                Projets de {currentWorkspace.name} ({projects.length})
+              </h3>
+              {isWorkspaceAdmin && (
+                <button
+                  onClick={() => setIsCreateProjectModalOpen(true)}
+                  className="flex items-center gap-1.5 px-3 py-1 rounded bg-[#2563EB] hover:bg-[#1D4ED8] text-white font-bold text-xs shadow-sm shadow-blue-500/25 transition-all whitespace-nowrap"
+                >
+                  <Plus className="w-3.5 h-3.5" />
+                  <span>Nouveau projet</span>
+                </button>
+              )}
+            </div>
+
+            <div className="divide-y divide-[#1E293B]">
+              {loadingProjects ? (
+                <div className="p-6 text-center text-xs text-slate-400">Chargement des projets...</div>
+              ) : projects.length === 0 ? (
+                <div className="p-6 text-center text-xs text-slate-500">Aucun projet dans cet espace pour l'instant.</div>
+              ) : (
+                projects.map(prj => (
+                  <div key={prj.id} className="p-3 flex items-center justify-between gap-3">
+                    <div className="flex items-center gap-2 min-w-0">
+                      <FolderGit2 className="w-3.5 h-3.5 text-[#3B82F6] shrink-0" />
+                      <div className="min-w-0">
+                        <p className="text-xs font-bold text-slate-100 truncate">{prj.name}</p>
+                        <p className="text-[10px] text-slate-500">
+                          {prj.tasks_count || 0} tâche{(prj.tasks_count || 0) > 1 ? 's' : ''} · {prj.completed_tasks_count || 0} terminée{(prj.completed_tasks_count || 0) > 1 ? 's' : ''}
+                        </p>
+                      </div>
+                    </div>
+
+                    {isWorkspaceAdmin && (
+                      <div className="flex items-center gap-2 shrink-0">
+                        <button
+                          onClick={() => handleOpenProjectMembers(prj)}
+                          title="Gérer les membres du projet"
+                          className="flex items-center gap-1 px-2.5 py-1 rounded bg-[#1E293B] hover:bg-[#334155] text-[#60A5FA] text-xs font-bold transition-colors"
+                        >
+                          <Users className="w-3 h-3" />
+                          <span className="hidden sm:inline">Membres</span>
+                        </button>
+                        <button
+                          onClick={() => setEditingProject(prj)}
+                          title="Modifier le projet"
+                          className="p-1.5 rounded text-slate-400 hover:text-[#60A5FA] hover:bg-[#1E293B] transition-colors"
+                        >
+                          <Edit2 className="w-3.5 h-3.5" />
+                        </button>
+                        <button
+                          onClick={() => handleDeleteProject(prj)}
+                          title="Supprimer le projet"
+                          className="p-1.5 rounded text-slate-500 hover:text-rose-400 hover:bg-rose-500/10 transition-colors"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+
+          {/* Project members panel — add/remove members on the project
+              selected via the "Membres" button above */}
+          {managingProject && (
+            <div className="bg-[#0F172A] border border-[#1E293B] rounded overflow-hidden">
+              <div className="p-3 border-b border-[#1E293B] bg-[#0B1120] flex items-center justify-between gap-3">
+                <h3 className="text-[10px] font-bold uppercase tracking-wider text-slate-300 truncate">
+                  Membres du projet « {managingProject.name} » ({projectMembers.length})
+                </h3>
+                <button
+                  onClick={() => setManagingProject(null)}
+                  className="px-2 py-1 rounded text-slate-400 hover:text-slate-200 hover:bg-[#1E293B] transition-colors shrink-0 text-xs font-bold"
+                >
+                  Fermer
+                </button>
+              </div>
+
+              <div className="p-3 border-b border-[#1E293B] flex flex-col sm:flex-row gap-2">
+                <select
+                  value={addProjectMemberUserId}
+                  onChange={e => setAddProjectMemberUserId(e.target.value)}
+                  className="flex-1 min-w-0 px-3 py-1.5 rounded bg-[#090D16] border border-[#1E293B] text-xs font-semibold text-slate-200 focus:outline-none focus:border-[#2563EB]/50 cursor-pointer"
+                >
+                  <option value="">Sélectionner un membre de l'espace...</option>
+                  {members
+                    .filter(m => !projectMembers.some(pm => pm.user_id === m.user_id))
+                    .map(m => (
+                      <option key={m.user_id} value={m.user_id}>{m.user?.name || m.user?.email}</option>
+                    ))}
+                </select>
+                <button
+                  onClick={handleAddProjectMember}
+                  disabled={!addProjectMemberUserId}
+                  className="px-4 py-1.5 rounded bg-[#2563EB] hover:bg-[#1D4ED8] text-white font-bold text-xs shadow-sm shadow-blue-500/25 transition-all disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap"
+                >
+                  Ajouter au projet
+                </button>
+              </div>
+
+              <div className="divide-y divide-[#1E293B]">
+                {loadingProjectMembers ? (
+                  <div className="p-6 text-center text-xs text-slate-400">Chargement...</div>
+                ) : projectMembers.length === 0 ? (
+                  <div className="p-6 text-center text-xs text-slate-500">Aucun membre assigné à ce projet pour l'instant.</div>
+                ) : (
+                  projectMembers.map(pm => (
+                    <div key={pm.id} className="p-3 flex items-center justify-between gap-3">
+                      <div className="flex items-center gap-2.5 min-w-0">
+                        <Avatar user={pm.user} size="sm" />
+                        <div className="min-w-0">
+                          <p className="text-xs font-bold text-slate-100 truncate">{pm.user?.name}</p>
+                          <p className="text-[10px] text-slate-500 font-mono truncate">{pm.user?.email}</p>
+                        </div>
+                      </div>
+                      <button
+                        onClick={() => handleRemoveProjectMember(pm.user_id)}
+                        title="Retirer du projet"
+                        className="p-1.5 rounded text-slate-500 hover:text-rose-400 hover:bg-rose-500/10 transition-colors shrink-0"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  ))
+                )}
               </div>
             </div>
-
-            <div className="pt-2">
-              <button
-                type="submit"
-                disabled={isUpdatingWs}
-                className="px-4 py-1.5 rounded bg-[#2563EB] hover:bg-[#1D4ED8] text-white font-bold text-xs shadow-sm shadow-blue-500/25 transition-all"
-              >
-                {isUpdatingWs ? 'Enregistrement...' : 'Enregistrer les modifications'}
-              </button>
-            </div>
-          </div>
-        </form>
-
-        {/* Danger Zone */}
-        <div className="p-5 rounded-lg bg-rose-500/5 border border-rose-500/20 space-y-4">
-          <h3 className="text-sm font-bold text-rose-400 uppercase tracking-wide flex items-center gap-2">
-            <Trash2 className="w-4 h-4" />
-            Zone dangereuse
-          </h3>
-          <p className="text-xs text-rose-300/80 max-w-2xl leading-relaxed">
-            La suppression d'un espace de travail est définitive. Tous les projets, tâches, tags et membres qui y sont rattachés perdront accès à ces données, et elles seront détruites de manière permanente.
-          </p>
-          <div className="pt-2">
-            <button
-              type="button"
-              onClick={handleDeleteWorkspace}
-              disabled={isUpdatingWs}
-              className="px-4 py-2 rounded bg-rose-500/10 hover:bg-rose-500 text-rose-500 hover:text-white border border-rose-500/30 hover:border-rose-500 font-bold text-xs shadow-sm transition-all"
-            >
-              Supprimer l'espace de travail
-            </button>
-          </div>
+          )}
         </div>
-      </>
       )}
 
       {/* TAB: SONS & ALERTES (AUDIO ENGINE & NOTIFICATIONS) */}

@@ -2,13 +2,19 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { Avatar } from '../common/Avatar';
 import { api } from '../../lib/api';
-import { Conversation, Message, User } from '../../types';
-import { Send, Search, MessageSquarePlus, ArrowLeft, MessagesSquare } from 'lucide-react';
+import { Conversation, ConversationParticipant, Message, User } from '../../types';
+import { Send, Search, MessageSquarePlus, ArrowLeft, MessagesSquare, Reply, X, Check, CheckCheck } from 'lucide-react';
 
 const POLL_INTERVAL_MS = 4000;
+const ONLINE_WINDOW_MS = 90_000;
 
-function otherParticipant(conversation: Conversation, currentUserId: string): User | undefined {
+function otherParticipant(conversation: Conversation, currentUserId: string): ConversationParticipant | undefined {
   return conversation.participants.find(p => p.id !== currentUserId) || conversation.participants[0];
+}
+
+function isOnline(p?: ConversationParticipant): boolean {
+  if (!p?.last_seen_at) return false;
+  return Date.now() - new Date(p.last_seen_at).getTime() < ONLINE_WINDOW_MS;
 }
 
 function formatTime(iso: string): string {
@@ -32,6 +38,7 @@ export const MessagesView: React.FC = () => {
   const [allUsers, setAllUsers] = useState<User[]>([]);
   const [newChatSearch, setNewChatSearch] = useState('');
   const [showMobileThread, setShowMobileThread] = useState(false);
+  const [replyingTo, setReplyingTo] = useState<Message | null>(null);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const activeConversationIdRef = useRef<string | null>(null);
@@ -70,6 +77,7 @@ export const MessagesView: React.FC = () => {
   }, [loadConversations]);
 
   useEffect(() => {
+    setReplyingTo(null);
     if (!activeConversationId) return;
     loadMessages(activeConversationId);
     const interval = setInterval(() => loadMessages(activeConversationId, true), POLL_INTERVAL_MS);
@@ -110,8 +118,10 @@ export const MessagesView: React.FC = () => {
 
     setSending(true);
     setMessageInput('');
+    const replyToId = replyingTo?.id || null;
+    setReplyingTo(null);
     try {
-      const sent = await api.sendMessage(activeConversationId, content);
+      const sent = await api.sendMessage(activeConversationId, content, replyToId);
       setMessages(prev => [...prev, sent]);
       loadConversations();
     } catch (err) {
@@ -171,7 +181,12 @@ export const MessagesView: React.FC = () => {
                     : 'border-transparent hover:bg-[#0F172A]'
                 }`}
               >
-                <Avatar user={other} size="md" />
+                <div className="relative shrink-0">
+                  <Avatar user={other} size="md" />
+                  {isOnline(other) && (
+                    <span className="absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full bg-emerald-400 border-2 border-[#0B1120]" />
+                  )}
+                </div>
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center justify-between gap-2">
                     <p className={`text-xs truncate ${conv.unread_count > 0 ? 'font-bold text-slate-100' : 'font-semibold text-slate-300'}`}>
@@ -216,13 +231,20 @@ export const MessagesView: React.FC = () => {
               >
                 <ArrowLeft className="w-4 h-4" />
               </button>
-              <Avatar user={user ? otherParticipant(activeConversation, user.id) : undefined} size="sm" />
+              <div className="relative shrink-0">
+                <Avatar user={user ? otherParticipant(activeConversation, user.id) : undefined} size="sm" />
+                {user && isOnline(otherParticipant(activeConversation, user.id)) && (
+                  <span className="absolute -bottom-0.5 -right-0.5 w-2 h-2 rounded-full bg-emerald-400 border-2 border-[#0B1120]" />
+                )}
+              </div>
               <div className="min-w-0">
                 <p className="text-xs font-bold text-slate-100 truncate">
                   {user ? otherParticipant(activeConversation, user.id)?.name : ''}
                 </p>
                 <p className="text-[10px] text-slate-500 truncate">
-                  {user ? otherParticipant(activeConversation, user.id)?.email : ''}
+                  {user && isOnline(otherParticipant(activeConversation, user.id))
+                    ? 'En ligne'
+                    : (user ? otherParticipant(activeConversation, user.id)?.email : '')}
                 </p>
               </div>
             </div>
@@ -238,42 +260,85 @@ export const MessagesView: React.FC = () => {
                 </div>
               )}
 
-              {messages.map(msg => {
-                const isMine = msg.sender_id === user?.id;
-                return (
-                  <div key={msg.id} className={`flex ${isMine ? 'justify-end' : 'justify-start'}`}>
-                    <div className={`max-w-[75%] sm:max-w-[60%] px-3 py-2 rounded-lg text-xs leading-relaxed ${
-                      isMine
-                        ? 'bg-[#2563EB] text-white rounded-br-sm'
-                        : 'bg-[#1E293B] text-slate-200 rounded-bl-sm'
-                    }`}>
-                      <p className="whitespace-pre-wrap break-words">{msg.content}</p>
-                      <p className={`text-[10px] mt-1 ${isMine ? 'text-blue-100/70' : 'text-slate-500'}`}>
-                        {formatTime(msg.created_at)}
-                      </p>
+              {(() => {
+                const other = user ? otherParticipant(activeConversation, user.id) : undefined;
+                const lastMineIndex = [...messages].map(m => m.sender_id === user?.id).lastIndexOf(true);
+                return messages.map((msg, idx) => {
+                  const isMine = msg.sender_id === user?.id;
+                  const isSeen = isMine && idx === lastMineIndex && !!other?.last_read_at && new Date(other.last_read_at) >= new Date(msg.created_at);
+                  return (
+                    <div key={msg.id} className={`flex ${isMine ? 'justify-end' : 'justify-start'} group`}>
+                      <button
+                        type="button"
+                        onClick={() => setReplyingTo(msg)}
+                        title="Répondre"
+                        className={`self-center p-1 rounded text-slate-500 hover:text-[#60A5FA] opacity-0 group-hover:opacity-100 transition-opacity ${isMine ? 'order-first mr-1' : 'ml-1'}`}
+                      >
+                        <Reply className="w-3 h-3" />
+                      </button>
+                      <div className="max-w-[75%] sm:max-w-[60%]">
+                        <div className={`px-3 py-2 rounded-lg text-xs leading-relaxed ${
+                          isMine
+                            ? 'bg-[#2563EB] text-white rounded-br-sm'
+                            : 'bg-[#1E293B] text-slate-200 rounded-bl-sm'
+                        }`}>
+                          {msg.reply_to && (
+                            <div className={`mb-1.5 pl-2 border-l-2 text-[10px] truncate ${isMine ? 'border-blue-200/50 text-blue-100/80' : 'border-slate-500 text-slate-400'}`}>
+                              <span className="font-bold">{msg.reply_to.sender_name || 'Message'}</span>
+                              <span className="ml-1">{msg.reply_to.content}</span>
+                            </div>
+                          )}
+                          <p className="whitespace-pre-wrap break-words">{msg.content}</p>
+                          <p className={`text-[10px] mt-1 ${isMine ? 'text-blue-100/70' : 'text-slate-500'}`}>
+                            {formatTime(msg.created_at)}
+                          </p>
+                        </div>
+                        {isMine && idx === lastMineIndex && (
+                          <p className="flex items-center justify-end gap-1 text-[10px] text-slate-500 mt-0.5 pr-1">
+                            {isSeen ? <><CheckCheck className="w-3 h-3 text-[#60A5FA]" /> Vu</> : <><Check className="w-3 h-3" /> Envoyé</>}
+                          </p>
+                        )}
+                      </div>
                     </div>
-                  </div>
-                );
-              })}
+                  );
+                });
+              })()}
               <div ref={messagesEndRef} />
             </div>
 
-            <form onSubmit={handleSend} className="shrink-0 flex items-center gap-2 px-3 py-3 border-t border-[#1E293B] bg-[#0B1120]">
-              <input
-                type="text"
-                value={messageInput}
-                onChange={e => setMessageInput(e.target.value)}
-                placeholder="Écrivez un message..."
-                className="flex-1 px-3 py-2 rounded bg-[#090D16] border border-[#1E293B] text-xs text-slate-200 placeholder-slate-500 focus:outline-none focus:border-[#2563EB]/60"
-              />
-              <button
-                type="submit"
-                disabled={!messageInput.trim() || sending}
-                className="p-2 rounded bg-[#2563EB] hover:bg-[#1D4ED8] disabled:opacity-40 disabled:cursor-not-allowed text-white transition-colors shrink-0"
-              >
-                <Send className="w-3.5 h-3.5" />
-              </button>
-            </form>
+            <div className="shrink-0 border-t border-[#1E293B] bg-[#0B1120]">
+              {replyingTo && (
+                <div className="flex items-center justify-between gap-2 px-3 pt-2.5">
+                  <div className="flex-1 min-w-0 pl-2 border-l-2 border-[#2563EB] text-[11px] text-slate-400 truncate">
+                    <span className="font-bold text-[#60A5FA]">Réponse à {replyingTo.sender?.name || ''}</span>
+                    <span className="ml-1">{replyingTo.content}</span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setReplyingTo(null)}
+                    className="p-0.5 text-slate-500 hover:text-slate-200 shrink-0"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              )}
+              <form onSubmit={handleSend} className="flex items-center gap-2 px-3 py-3">
+                <input
+                  type="text"
+                  value={messageInput}
+                  onChange={e => setMessageInput(e.target.value)}
+                  placeholder="Écrivez un message..."
+                  className="flex-1 px-3 py-2 rounded bg-[#090D16] border border-[#1E293B] text-xs text-slate-200 placeholder-slate-500 focus:outline-none focus:border-[#2563EB]/60"
+                />
+                <button
+                  type="submit"
+                  disabled={!messageInput.trim() || sending}
+                  className="p-2 rounded bg-[#2563EB] hover:bg-[#1D4ED8] disabled:opacity-40 disabled:cursor-not-allowed text-white transition-colors shrink-0"
+                >
+                  <Send className="w-3.5 h-3.5" />
+                </button>
+              </form>
+            </div>
           </>
         )}
       </div>

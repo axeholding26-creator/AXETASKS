@@ -1,17 +1,7 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
-import { Workspace, Project, Task } from '../types';
+import { Workspace, Project } from '../types';
 import { api } from '../lib/api';
 import { useAuth } from './AuthContext';
-
-interface ActiveTimer {
-  taskId: string;
-  taskTitle: string;
-  projectName?: string;
-  workspaceName?: string;
-  startTime: number; // timestamp
-  elapsedSeconds: number;
-  isRunning: boolean;
-}
 
 interface WorkspaceContextType {
   workspaces: Workspace[];
@@ -22,7 +12,6 @@ interface WorkspaceContextType {
   isCreateTaskModalOpen: boolean;
   isCreateProjectModalOpen: boolean;
   isCreateWorkspaceModalOpen: boolean;
-  activeTimer: ActiveTimer | null;
   taskVersion: number;
   projectVersion: number;
   setCurrentWorkspaceId: (id: string | null) => void;
@@ -34,11 +23,6 @@ interface WorkspaceContextType {
   refreshWorkspaces: () => Promise<void>;
   bumpTaskVersion: () => void;
   bumpProjectVersion: () => void;
-  startTimer: (task: Task) => void;
-  pauseTimer: () => void;
-  resumeTimer: () => void;
-  stopAndLogTimer: (note?: string) => Promise<void>;
-  discardTimer: () => void;
 }
 
 const WorkspaceContext = createContext<WorkspaceContextType | undefined>(undefined);
@@ -90,40 +74,6 @@ export const WorkspaceProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   const [isCreateTaskModalOpen, setIsCreateTaskModalOpen] = useState(false);
   const [isCreateProjectModalOpen, setIsCreateProjectModalOpen] = useState(false);
   const [isCreateWorkspaceModalOpen, setIsCreateWorkspaceModalOpen] = useState(false);
-
-  // Active Live Timer
-  const [activeTimer, setActiveTimer] = useState<ActiveTimer | null>(() => {
-    const saved = localStorage.getItem('axetask_active_timer');
-    if (saved) {
-      try {
-        return JSON.parse(saved);
-      } catch {
-        return null;
-      }
-    }
-    return null;
-  });
-
-  // Timer tick interval
-  useEffect(() => {
-    let interval: any = null;
-    if (activeTimer && activeTimer.isRunning) {
-      interval = setInterval(() => {
-        setActiveTimer(prev => {
-          if (!prev || !prev.isRunning) return prev;
-          const updated = {
-            ...prev,
-            elapsedSeconds: prev.elapsedSeconds + 1,
-          };
-          localStorage.setItem('axetask_active_timer', JSON.stringify(updated));
-          return updated;
-        });
-      }, 1000);
-    }
-    return () => {
-      if (interval) clearInterval(interval);
-    };
-  }, [activeTimer?.isRunning]);
 
   const refreshWorkspaces = useCallback(async () => {
     if (!user) {
@@ -194,58 +144,6 @@ export const WorkspaceProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     }
   };
 
-  // Timer Controls
-  const startTimer = (task: Task) => {
-    const newTimer: ActiveTimer = {
-      taskId: task.id,
-      taskTitle: task.title,
-      projectName: task.project?.name,
-      workspaceName: task.workspace?.name,
-      startTime: Date.now(),
-      elapsedSeconds: 0,
-      isRunning: true,
-    };
-    setActiveTimer(newTimer);
-    localStorage.setItem('axetask_active_timer', JSON.stringify(newTimer));
-  };
-
-  const pauseTimer = () => {
-    setActiveTimer(prev => {
-      if (!prev) return null;
-      const updated = { ...prev, isRunning: false };
-      localStorage.setItem('axetask_active_timer', JSON.stringify(updated));
-      return updated;
-    });
-  };
-
-  const resumeTimer = () => {
-    setActiveTimer(prev => {
-      if (!prev) return null;
-      const updated = { ...prev, isRunning: true };
-      localStorage.setItem('axetask_active_timer', JSON.stringify(updated));
-      return updated;
-    });
-  };
-
-  const stopAndLogTimer = async (note?: string) => {
-    if (!activeTimer) return;
-    const durationMinutes = Math.max(1, Math.round(activeTimer.elapsedSeconds / 60));
-    try {
-      await api.logTime(activeTimer.taskId, durationMinutes, note || 'Session chronométrée', new Date().toISOString().split('T')[0]);
-      setActiveTimer(null);
-      localStorage.removeItem('axetask_active_timer');
-      bumpTaskVersion();
-    } catch (err) {
-      console.error('Failed to log timer:', err);
-      throw err;
-    }
-  };
-
-  const discardTimer = () => {
-    setActiveTimer(null);
-    localStorage.removeItem('axetask_active_timer');
-  };
-
   return (
     <WorkspaceContext.Provider
       value={{
@@ -257,7 +155,6 @@ export const WorkspaceProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         isCreateTaskModalOpen,
         isCreateProjectModalOpen,
         isCreateWorkspaceModalOpen,
-        activeTimer,
         taskVersion,
         projectVersion,
         setCurrentWorkspaceId,
@@ -269,11 +166,6 @@ export const WorkspaceProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         refreshWorkspaces,
         bumpTaskVersion,
         bumpProjectVersion,
-        startTimer,
-        pauseTimer,
-        resumeTimer,
-        stopAndLogTimer,
-        discardTimer,
       }}
     >
       {children}

@@ -6,24 +6,27 @@ import { api } from '../../lib/api';
 import { Task, TaskStatus, TaskPriority, Tag, User } from '../../types';
 import { StatusBadge, PriorityBadge } from '../common/Badge';
 import { Avatar } from '../common/Avatar';
+import { ChronoWidget } from '../common/ChronoWidget';
+import { CalendarPicker } from '../common/CalendarPicker';
+import { combineDateAndTime, splitISOToDateAndTime } from '../../lib/datetime';
+import { readFileAsDataUrl } from '../../lib/file';
 import confetti from 'canvas-confetti';
 import {
   ArrowLeft,
   X,
   Trash2,
-  Calendar, 
-  User as UserIcon, 
-  Tag as TagIcon, 
-  CheckSquare, 
-  MessageSquare, 
-  Paperclip, 
-  Clock, 
-  Play, 
-  Plus, 
-  Check, 
-  Send, 
-  FolderGit2, 
+  Calendar,
+  User as UserIcon,
+  Tag as TagIcon,
+  CheckSquare,
+  MessageSquare,
+  Paperclip,
+  Plus,
+  Check,
+  Send,
+  FolderGit2,
   ExternalLink,
+  Upload,
   Download,
   AlertCircle
 } from 'lucide-react';
@@ -33,8 +36,6 @@ export const TaskDetailDrawer: React.FC = () => {
   const {
     selectedTaskId,
     setSelectedTaskId,
-    startTimer,
-    activeTimer,
     currentWorkspace,
     bumpTaskVersion
   } = useWorkspace();
@@ -49,7 +50,10 @@ export const TaskDetailDrawer: React.FC = () => {
   const [status, setStatus] = useState<TaskStatus>('a_faire');
   const [priority, setPriority] = useState<TaskPriority>('normale');
   const [assigneeId, setAssigneeId] = useState<string>('');
-  const [dueDate, setDueDate] = useState<string>('');
+  const [startDate, setStartDate] = useState<string>('');
+  const [startTime, setStartTime] = useState<string>('09:00');
+  const [endDate, setEndDate] = useState<string>('');
+  const [endTime, setEndTime] = useState<string>('18:00');
 
   // Subtasks & Comments & Attachments & Time Logging inputs
   const [newSubtaskTitle, setNewSubtaskTitle] = useState('');
@@ -57,18 +61,15 @@ export const TaskDetailDrawer: React.FC = () => {
   const [newAttachmentName, setNewAttachmentName] = useState('');
   const [newAttachmentUrl, setNewAttachmentUrl] = useState('');
   const [isAddingAttachment, setIsAddingAttachment] = useState(false);
-
-  // Time logging
-  const [logDuration, setLogDuration] = useState('');
-  const [logNote, setLogNote] = useState('');
-  const [isLoggingTime, setIsLoggingTime] = useState(false);
+  const [isUploadingFile, setIsUploadingFile] = useState(false);
+  const [attachmentError, setAttachmentError] = useState('');
 
   // Available options
   const [workspaceMembers, setWorkspaceMembers] = useState<User[]>([]);
   const [workspaceTags, setWorkspaceTags] = useState<Tag[]>([]);
 
   // Active Tab
-  const [activeTab, setActiveTab] = useState<'subtasks' | 'comments' | 'attachments' | 'time'>('subtasks');
+  const [activeTab, setActiveTab] = useState<'subtasks' | 'comments' | 'attachments'>('subtasks');
 
   const loadTask = async () => {
     if (!selectedTaskId) return;
@@ -81,7 +82,12 @@ export const TaskDetailDrawer: React.FC = () => {
       setStatus(data.status);
       setPriority(data.priority);
       setAssigneeId(data.assignee_id || '');
-      setDueDate(data.due_date || '');
+      const s = splitISOToDateAndTime(data.start_at);
+      const en = splitISOToDateAndTime(data.end_at);
+      setStartDate(s.date);
+      setStartTime(s.time || '09:00');
+      setEndDate(en.date);
+      setEndTime(en.time || '18:00');
 
       // Assignee list intentionally includes every platform user, not just
       // existing workspace members — assigning someone new auto-grants them
@@ -201,36 +207,33 @@ export const TaskDetailDrawer: React.FC = () => {
     }
   };
 
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file || !task) return;
+    try {
+      setIsUploadingFile(true);
+      setAttachmentError('');
+      const dataUrl = await readFileAsDataUrl(file);
+      await api.addAttachment(task.id, {
+        file_name: file.name,
+        file_url: dataUrl,
+        file_size: file.size,
+        file_type: file.type || undefined,
+      });
+      loadTask();
+      bumpTaskVersion();
+    } catch (err: any) {
+      setAttachmentError(err.message || "Erreur lors de l'import du fichier.");
+      setTimeout(() => setAttachmentError(''), 3000);
+    } finally {
+      setIsUploadingFile(false);
+    }
+  };
+
   const handleDeleteAttachment = async (attachmentId: string) => {
     try {
       await api.deleteAttachment(attachmentId);
-      loadTask();
-      bumpTaskVersion();
-    } catch (err) {
-      console.error(err);
-    }
-  };
-
-  // Time logging
-  const handleLogTime = async (e: React.FormEvent) => {
-    e.preventDefault();
-    const duration = parseInt(logDuration, 10);
-    if (!duration || duration <= 0 || !task) return;
-    try {
-      await api.logTime(task.id, duration, logNote, new Date().toISOString().split('T')[0]);
-      setLogDuration('');
-      setLogNote('');
-      setIsLoggingTime(false);
-      loadTask();
-      bumpTaskVersion();
-    } catch (err) {
-      console.error(err);
-    }
-  };
-
-  const handleDeleteTimeEntry = async (entryId: string) => {
-    try {
-      await api.deleteTimeEntry(entryId);
       loadTask();
       bumpTaskVersion();
     } catch (err) {
@@ -277,6 +280,7 @@ export const TaskDetailDrawer: React.FC = () => {
   return (
     <div className="fixed inset-0 z-[100] overflow-y-auto bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in duration-150 font-mono">
       <ConfirmDialog {...confirmProps} />
+
       <div className="w-full max-w-2xl bg-[#090D16] border border-[#1E293B] rounded-lg max-h-[calc(100dvh-2rem)] my-auto flex flex-col shadow-2xl animate-in zoom-in-95 duration-200">
         {/* Header */}
         <div className="p-3.5 border-b border-[#1E293B] bg-[#0B1120] flex items-center gap-3">
@@ -299,14 +303,12 @@ export const TaskDetailDrawer: React.FC = () => {
           </div>
 
           <div className="flex items-center gap-2">
+            {/* Chronométrage — entièrement automatique : démarre quand le
+                statut passe à "En cours" (task.start_at posé côté serveur),
+                passe au rouge si l'échéance est dépassée, se fige quand la
+                tâche passe à "Terminé". */}
             {task && (
-              <button
-                onClick={() => startTimer(task)}
-                className="flex items-center gap-1.5 px-2.5 py-1 rounded bg-[#2563EB]/15 border border-[#2563EB]/40 text-[#60A5FA] hover:bg-[#2563EB]/25 text-xs font-bold transition-colors"
-              >
-                <Play className="w-3 h-3" />
-                <span>Chronométrer</span>
-              </button>
+              <ChronoWidget startAt={task.start_at} endAt={task.end_at} completedAt={task.completed_at} />
             )}
 
             <button
@@ -415,21 +417,59 @@ export const TaskDetailDrawer: React.FC = () => {
                   </select>
                 </div>
 
-                {/* Due Date */}
+              </div>
+
+              {/* Start / End date & time — drives the task chrono */}
+              <div className="grid grid-cols-2 gap-2.5 p-3.5 rounded bg-[#0F172A] border border-[#1E293B]">
                 <div>
                   <label className="block text-[9px] font-bold uppercase tracking-wider text-slate-400 mb-1">
-                    Échéance
+                    Début (date et heure)
                   </label>
-                  <input
-                    type="date"
-                    value={dueDate}
-                    onChange={e => {
-                      const val = e.target.value;
-                      setDueDate(val);
-                      handleUpdateField({ due_date: val || null });
-                    }}
-                    className="w-full px-2 py-0.5 rounded bg-[#090D16] border border-[#1E293B] text-xs font-medium text-slate-200 focus:outline-none focus:border-[#2563EB]/60 cursor-pointer"
-                  />
+                  <div className="space-y-1.5">
+                    <CalendarPicker
+                      value={startDate}
+                      onChange={val => {
+                        setStartDate(val);
+                        handleUpdateField({ start_at: combineDateAndTime(val, startTime) || null });
+                      }}
+                      placeholder="Date de début"
+                    />
+                    <input
+                      type="time"
+                      value={startTime}
+                      onChange={e => {
+                        const val = e.target.value;
+                        setStartTime(val);
+                        if (startDate) handleUpdateField({ start_at: combineDateAndTime(startDate, val) || null });
+                      }}
+                      className="w-full px-2 py-1 rounded bg-[#090D16] border border-[#1E293B] text-xs text-slate-200 focus:outline-none focus:border-[#2563EB]/60"
+                    />
+                  </div>
+                </div>
+                <div>
+                  <label className="block text-[9px] font-bold uppercase tracking-wider text-slate-400 mb-1">
+                    Fin (date et heure)
+                  </label>
+                  <div className="space-y-1.5">
+                    <CalendarPicker
+                      value={endDate}
+                      onChange={val => {
+                        setEndDate(val);
+                        handleUpdateField({ end_at: combineDateAndTime(val, endTime) || null });
+                      }}
+                      placeholder="Date de fin"
+                    />
+                    <input
+                      type="time"
+                      value={endTime}
+                      onChange={e => {
+                        const val = e.target.value;
+                        setEndTime(val);
+                        if (endDate) handleUpdateField({ end_at: combineDateAndTime(endDate, val) || null });
+                      }}
+                      className="w-full px-2 py-1 rounded bg-[#090D16] border border-[#1E293B] text-xs text-slate-200 focus:outline-none focus:border-[#2563EB]/60"
+                    />
+                  </div>
                 </div>
               </div>
 
@@ -523,19 +563,6 @@ export const TaskDetailDrawer: React.FC = () => {
                     <Paperclip className="w-3.5 h-3.5" />
                     <span className="hidden sm:inline">Fichiers </span>
                     <span>({task.attachments?.length || 0})</span>
-                  </button>
-
-                  <button
-                    onClick={() => setActiveTab('time')}
-                    className={`flex items-center gap-1.5 px-2 sm:px-2.5 py-1 rounded text-xs font-bold transition-colors shrink-0 ${
-                      activeTab === 'time'
-                        ? 'bg-[#2563EB]/15 text-[#60A5FA] border border-[#2563EB]/40'
-                        : 'text-slate-400 hover:text-slate-200'
-                    }`}
-                  >
-                    <Clock className="w-3.5 h-3.5" />
-                    <span className="hidden sm:inline">Temps </span>
-                    <span>({task.total_time_minutes ? `${Math.floor(task.total_time_minutes / 60)}h ${task.total_time_minutes % 60}m` : '0m'})</span>
                   </button>
                 </div>
 
@@ -702,7 +729,28 @@ export const TaskDetailDrawer: React.FC = () => {
                       )}
                     </div>
 
-                    {isAddingAttachment ? (
+                    {attachmentError && (
+                      <div className="p-2 rounded bg-rose-500/10 border border-rose-500/30 text-rose-400 text-[11px] font-medium">
+                        {attachmentError}
+                      </div>
+                    )}
+
+                    <div className="grid grid-cols-2 gap-2">
+                      <label className="cursor-pointer py-1.5 border border-dashed border-[#1E293B] rounded text-xs font-semibold text-[#60A5FA] hover:bg-[#0F172A] transition-colors flex items-center justify-center gap-1.5">
+                        <Upload className="w-3.5 h-3.5" />
+                        <span>{isUploadingFile ? 'Import...' : 'Importer un fichier'}</span>
+                        <input type="file" onChange={handleFileUpload} disabled={isUploadingFile} className="hidden" />
+                      </label>
+                      <button
+                        onClick={() => setIsAddingAttachment(!isAddingAttachment)}
+                        className="py-1.5 border border-dashed border-[#1E293B] rounded text-xs font-semibold text-slate-400 hover:bg-[#0F172A] hover:text-[#60A5FA] transition-colors flex items-center justify-center gap-1.5"
+                      >
+                        <Plus className="w-3.5 h-3.5" />
+                        <span>Attacher un lien</span>
+                      </button>
+                    </div>
+
+                    {isAddingAttachment && (
                       <form onSubmit={handleAddAttachment} className="p-2.5 rounded bg-[#0F172A] border border-[#1E293B] space-y-2">
                         <input
                           type="text"
@@ -734,111 +782,10 @@ export const TaskDetailDrawer: React.FC = () => {
                           </button>
                         </div>
                       </form>
-                    ) : (
-                      <button
-                        onClick={() => setIsAddingAttachment(true)}
-                        className="w-full py-1.5 border border-dashed border-[#1E293B] rounded text-xs font-semibold text-[#60A5FA] hover:bg-[#0F172A] transition-colors flex items-center justify-center gap-1.5"
-                      >
-                        <Plus className="w-3.5 h-3.5" />
-                        <span>Attacher un lien / fichier</span>
-                      </button>
                     )}
                   </div>
                 )}
 
-                {/* TAB 4: TIME ENTRIES */}
-                {activeTab === 'time' && (
-                  <div className="pt-3 space-y-2.5">
-                    <div className="flex items-center justify-between p-2.5 rounded bg-[#2563EB]/10 border border-[#2563EB]/30">
-                      <div>
-                        <span className="text-[10px] font-bold uppercase tracking-wider text-[#60A5FA]">Total cumulé</span>
-                        <p className="text-lg font-bold text-slate-100 font-mono">
-                          {task.total_time_minutes ? `${Math.floor(task.total_time_minutes / 60)}h ${task.total_time_minutes % 60}m` : '0m'}
-                        </p>
-                      </div>
-
-                      <button
-                        onClick={() => setIsLoggingTime(!isLoggingTime)}
-                        className="px-2.5 py-1 rounded bg-[#2563EB] hover:bg-[#1D4ED8] text-white font-bold text-xs transition-colors shadow-sm shadow-blue-500/25"
-                      >
-                        + Enregistrer du temps
-                      </button>
-                    </div>
-
-                    {isLoggingTime && (
-                      <form onSubmit={handleLogTime} className="p-2.5 rounded bg-[#0F172A] border border-[#1E293B] space-y-2">
-                        <div>
-                          <label className="block text-[9px] font-bold text-slate-400 uppercase mb-1">Durée (minutes)</label>
-                          <input
-                            type="number"
-                            min="1"
-                            value={logDuration}
-                            onChange={e => setLogDuration(e.target.value)}
-                            placeholder="Ex: 60"
-                            className="w-full px-2.5 py-1 rounded bg-[#090D16] border border-[#1E293B] text-xs text-slate-200 focus:outline-none"
-                          />
-                        </div>
-                        <div>
-                          <label className="block text-[9px] font-bold text-slate-400 uppercase mb-1">Note d'activité</label>
-                          <input
-                            type="text"
-                            value={logNote}
-                            onChange={e => setLogNote(e.target.value)}
-                            placeholder="Ex: Refactoring, audit..."
-                            className="w-full px-2.5 py-1 rounded bg-[#090D16] border border-[#1E293B] text-xs text-slate-200 focus:outline-none"
-                          />
-                        </div>
-                        <div className="flex justify-end gap-2 pt-1">
-                          <button
-                            type="button"
-                            onClick={() => setIsLoggingTime(false)}
-                            className="px-2 py-0.5 text-xs text-slate-400"
-                          >
-                            Annuler
-                          </button>
-                          <button
-                            type="submit"
-                            className="px-2.5 py-0.5 bg-[#2563EB] text-white font-bold rounded text-xs"
-                          >
-                            Enregistrer
-                          </button>
-                        </div>
-                      </form>
-                    )}
-
-                    <div className="space-y-1">
-                      {task.time_entries?.map(te => (
-                        <div
-                          key={te.id}
-                          className="flex items-center justify-between p-2 rounded bg-[#0F172A] border border-[#1E293B] text-xs"
-                        >
-                          <div className="flex items-center gap-2">
-                            <Avatar user={te.user} size="xs" />
-                            <div>
-                              <span className="font-mono font-bold text-[#60A5FA]">
-                                {Math.floor(te.duration_minutes / 60) > 0 ? `${Math.floor(te.duration_minutes / 60)}h ` : ''}
-                                {te.duration_minutes % 60}m
-                              </span>
-                              {te.note && <span className="text-slate-400 ml-2">— {te.note}</span>}
-                            </div>
-                          </div>
-
-                          <div className="flex items-center gap-2">
-                            <span className="text-[10px] text-slate-500">{te.date}</span>
-                            {te.user_id === user?.id && (
-                              <button
-                                onClick={() => handleDeleteTimeEntry(te.id)}
-                                className="text-slate-600 hover:text-rose-400"
-                              >
-                                <Trash2 className="w-3 h-3" />
-                              </button>
-                            )}
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
               </div>
             </>
           ) : (

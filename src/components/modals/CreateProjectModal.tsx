@@ -4,6 +4,7 @@ import { useToast } from '../../context/ToastContext';
 import { api } from '../../lib/api';
 import { FolderGit2, X, Plus } from 'lucide-react';
 import { CalendarPicker } from '../common/CalendarPicker';
+import { combineDateAndTime } from '../../lib/datetime';
 
 export const CreateProjectModal: React.FC = () => {
   const { notify } = useToast();
@@ -17,7 +18,10 @@ export const CreateProjectModal: React.FC = () => {
 
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
-  const [deadline, setDeadline] = useState('');
+  const [startDate, setStartDate] = useState('');
+  const [startTime, setStartTime] = useState('09:00');
+  const [endDate, setEndDate] = useState('');
+  const [endTime, setEndTime] = useState('18:00');
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
 
@@ -36,7 +40,8 @@ export const CreateProjectModal: React.FC = () => {
       const newProject = await api.createProject(currentWorkspace.id, {
         name: name.trim(),
         description: description.trim() || undefined,
-        deadline: deadline || undefined,
+        start_at: combineDateAndTime(startDate, startTime),
+        end_at: combineDateAndTime(endDate, endTime),
       });
 
       setIsCreateProjectModalOpen(false);
@@ -49,7 +54,8 @@ export const CreateProjectModal: React.FC = () => {
       });
       setName('');
       setDescription('');
-      setDeadline('');
+      setStartDate('');
+      setEndDate('');
     } catch (err: any) {
       setError(err.message || 'Erreur lors de la création du projet.');
     } finally {
@@ -116,15 +122,35 @@ export const CreateProjectModal: React.FC = () => {
             />
           </div>
 
-          <div className="relative z-10">
-            <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">
-              Date d'échéance cible
-            </label>
-            <CalendarPicker
-              value={deadline}
-              onChange={setDeadline}
-              placeholder="Sélectionner une date"
-            />
+          <div className="grid grid-cols-2 gap-3 relative z-10">
+            <div>
+              <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">
+                Début (date et heure)
+              </label>
+              <div className="space-y-1.5">
+                <CalendarPicker value={startDate} onChange={setStartDate} placeholder="Date de début" />
+                <input
+                  type="time"
+                  value={startTime}
+                  onChange={e => setStartTime(e.target.value)}
+                  className="w-full px-2.5 py-1.5 rounded bg-[#090D16] border border-[#1E293B] text-xs text-slate-200 focus:outline-none focus:border-[#2563EB]/60"
+                />
+              </div>
+            </div>
+            <div>
+              <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">
+                Fin (date et heure)
+              </label>
+              <div className="space-y-1.5">
+                <CalendarPicker value={endDate} onChange={setEndDate} placeholder="Date de fin" />
+                <input
+                  type="time"
+                  value={endTime}
+                  onChange={e => setEndTime(e.target.value)}
+                  className="w-full px-2.5 py-1.5 rounded bg-[#090D16] border border-[#1E293B] text-xs text-slate-200 focus:outline-none focus:border-[#2563EB]/60"
+                />
+              </div>
+            </div>
           </div>
 
           {/* Footer */}

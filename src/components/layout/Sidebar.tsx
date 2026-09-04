@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useWorkspace } from '../../context/WorkspaceContext';
+import { useAuth } from '../../context/AuthContext';
 import { api } from '../../lib/api';
 import { playNotificationSound } from '../../lib/sound';
 import { Project } from '../../types';
@@ -31,6 +32,8 @@ interface SidebarProps {
 const UNREAD_POLL_INTERVAL_MS = 15000;
 
 export const Sidebar: React.FC<SidebarProps> = ({ currentView, onNavigate, isOpen, onClose }) => {
+  const { user } = useAuth();
+  const isGlobalAdmin = user?.role === 'admin';
   const {
     workspaces,
     currentWorkspace,
@@ -154,16 +157,18 @@ export const Sidebar: React.FC<SidebarProps> = ({ currentView, onNavigate, isOpe
                   );
                 })}
               </div>
-              <button
-                onClick={() => {
-                  setIsMobileWsExpanded(false);
-                  setIsCreateWorkspaceModalOpen(true);
-                }}
-                className="w-full flex items-center gap-1.5 px-3 py-1.5 border-t border-[#1E293B] text-xs font-mono text-[#60A5FA] hover:bg-[#2563EB]/15 transition-colors"
-              >
-                <Plus className="w-3.5 h-3.5" />
-                <span>Nouvel espace</span>
-              </button>
+              {isGlobalAdmin && (
+                <button
+                  onClick={() => {
+                    setIsMobileWsExpanded(false);
+                    setIsCreateWorkspaceModalOpen(true);
+                  }}
+                  className="w-full flex items-center gap-1.5 px-3 py-1.5 border-t border-[#1E293B] text-xs font-mono text-[#60A5FA] hover:bg-[#2563EB]/15 transition-colors"
+                >
+                  <Plus className="w-3.5 h-3.5" />
+                  <span>Nouvel espace</span>
+                </button>
+              )}
             </div>
           )}
         </div>
