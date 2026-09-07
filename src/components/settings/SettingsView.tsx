@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { useWorkspace } from '../../context/WorkspaceContext';
 import { useToast } from '../../context/ToastContext';
-import { SoundEffectType } from '../../lib/sound';
+import { SoundEffectType, pickRandomSoundType } from '../../lib/sound';
 import { api } from '../../lib/api';
 import { resizeImageToDataUrl } from '../../lib/image';
 import { WorkspaceMember, ProjectMember, Tag, WorkspaceRole, User as UserType, JobFunction, Project } from '../../types';
@@ -44,6 +44,13 @@ const PRESET_COLORS = [
   '#2563EB', '#3B82F6', '#60A5FA', '#10B981', '#F59E0B', '#EF4444', '#8B5CF6', '#EC4899'
 ];
 
+const ONLINE_WINDOW_MS = 90_000;
+
+function isUserOnline(u?: Pick<UserType, 'last_seen_at'>): boolean {
+  if (!u?.last_seen_at) return false;
+  return Date.now() - new Date(u.last_seen_at).getTime() < ONLINE_WINDOW_MS;
+}
+
 export const SettingsView: React.FC = () => {
   const { user, updateProfile, changePassword } = useAuth();
   const {
@@ -55,13 +62,15 @@ export const SettingsView: React.FC = () => {
     setIsCreateProjectModalOpen,
     bumpProjectVersion,
   } = useWorkspace();
-  const { 
-    notify, 
-    soundEnabled, 
-    soundVolume, 
-    toggleSound, 
-    updateVolume, 
-    playTestSound 
+  const {
+    notify,
+    soundEnabled,
+    soundVolume,
+    soundType,
+    toggleSound,
+    updateVolume,
+    selectSoundType,
+    playTestSound
   } = useToast();
   const { confirmProps, confirm } = useConfirm();
 
@@ -175,7 +184,6 @@ export const SettingsView: React.FC = () => {
   };
 
   const loadAllUsers = async () => {
-    if (!isGlobalAdmin) return;
     try {
       setLoadingUsers(true);
       const list = await api.getUsers();
@@ -203,11 +211,11 @@ export const SettingsView: React.FC = () => {
   };
 
   useEffect(() => {
-    if (isGlobalAdmin) {
-      loadAllUsers();
-      loadJobFunctions();
-    }
-  }, [isGlobalAdmin]);
+    // Every user (not just admins) can see the app-wide user directory —
+    // admins additionally get management controls rendered around it.
+    loadAllUsers();
+    loadJobFunctions();
+  }, []);
 
   // Profile: upload & compress an avatar image, then save it immediately
   const handleAvatarChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -669,19 +677,17 @@ export const SettingsView: React.FC = () => {
           <span>Tags & Labels ({tags.length})</span>
         </button>
 
-        {isGlobalAdmin && (
-          <button
-            onClick={() => setActiveTab('all_users')}
-            className={`flex items-center gap-2 px-3 py-1.5 rounded text-xs font-bold transition-colors whitespace-nowrap ${
-              activeTab === 'all_users'
-                ? 'bg-[#2563EB]/20 text-[#60A5FA] border border-[#2563EB]/40'
-                : 'text-slate-400 hover:text-slate-200'
-            }`}
-          >
-            <ShieldCheck className="w-3.5 h-3.5 text-[#3B82F6]" />
-            <span>Utilisateurs ({allUsers.length})</span>
-          </button>
-        )}
+        <button
+          onClick={() => setActiveTab('all_users')}
+          className={`flex items-center gap-2 px-3 py-1.5 rounded text-xs font-bold transition-colors whitespace-nowrap ${
+            activeTab === 'all_users'
+              ? 'bg-[#2563EB]/20 text-[#60A5FA] border border-[#2563EB]/40'
+              : 'text-slate-400 hover:text-slate-200'
+          }`}
+        >
+          <ShieldCheck className="w-3.5 h-3.5 text-[#3B82F6]" />
+          <span>Utilisateurs ({allUsers.length})</span>
+        </button>
 
         <button
           onClick={() => setActiveTab('notifications')}
@@ -845,6 +851,90 @@ export const SettingsView: React.FC = () => {
       )}
 
       {/* TAB: GLOBAL USERS ADMINISTRATION (ADMIN ONLY) */}
+      {activeTab === 'all_users' && !isGlobalAdmin && (
+        <div className="space-y-4">
+          {/* Read-only directory: every member can see who works in the app,
+              their function and whether they're currently online. */}
+          <div className="bg-[#0F172A] border border-[#1E293B] rounded overflow-hidden">
+            <div className="p-3 border-b border-[#1E293B] bg-[#0B1120] flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div className="flex items-center gap-2">
+                <ShieldCheck className="w-4 h-4 text-[#3B82F6]" />
+                <h3 className="text-[10px] font-bold uppercase tracking-wider text-slate-300">
+                  Répertoire des utilisateurs ({filteredUsers.length} / {allUsers.length})
+                </h3>
+              </div>
+
+              <div className="relative">
+                <Search className="w-3.5 h-3.5 text-slate-500 absolute left-2.5 top-1/2 -translate-y-1/2" />
+                <input
+                  type="text"
+                  placeholder="Rechercher par nom ou email..."
+                  value={userSearch}
+                  onChange={e => setUserSearch(e.target.value)}
+                  className="pl-8 pr-3 py-1 rounded bg-[#090D16] border border-[#1E293B] text-xs text-slate-200 placeholder-slate-500 focus:outline-none focus:border-[#2563EB]/50 w-full sm:w-64"
+                />
+              </div>
+            </div>
+
+            <div className="divide-y divide-[#1E293B]">
+              {loadingUsers ? (
+                <div className="p-6 text-center text-xs text-slate-400">
+                  Chargement des profils...
+                </div>
+              ) : filteredUsers.length === 0 ? (
+                <div className="p-6 text-center text-xs text-slate-500">
+                  Aucun profil trouvé correspondant à votre recherche.
+                </div>
+              ) : (
+                filteredUsers.map(profile => {
+                  const isCurrentSessionUser = profile.id === user?.id;
+                  const online = isUserOnline(profile);
+
+                  return (
+                    <div key={profile.id} className="p-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-3 hover:bg-[#1E293B]/20 transition-colors">
+                      <div className="flex items-center gap-3">
+                        <Avatar user={profile} size="md" />
+                        <div>
+                          <div className="flex items-center gap-2">
+                            <span className="text-xs font-bold text-slate-100">
+                              {profile.name}
+                            </span>
+                            {isCurrentSessionUser && (
+                              <span className="text-[9px] px-1.5 py-0.5 rounded bg-[#2563EB]/20 border border-[#2563EB]/40 text-[#60A5FA] font-bold">
+                                Vous
+                              </span>
+                            )}
+                          </div>
+                          <p className="text-[11px] text-slate-400 font-mono">{profile.email}</p>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-2.5 self-end sm:self-center">
+                        <span className="flex items-center gap-1.5 text-[11px] font-semibold text-slate-300">
+                          <Briefcase className="w-3.5 h-3.5 text-slate-500" />
+                          {profile.job_function?.name || 'Aucune fonction'}
+                        </span>
+
+                        <span
+                          className={`flex items-center gap-1.5 text-[10px] font-bold uppercase px-2 py-1 rounded border ${
+                            online
+                              ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-400'
+                              : 'bg-slate-500/10 border-slate-500/30 text-slate-400'
+                          }`}
+                        >
+                          <span className={`w-1.5 h-1.5 rounded-full ${online ? 'bg-emerald-400' : 'bg-slate-500'}`} />
+                          {online ? 'En ligne' : 'Hors ligne'}
+                        </span>
+                      </div>
+                    </div>
+                  );
+                })
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
       {activeTab === 'all_users' && isGlobalAdmin && (
         <div className="space-y-4">
           {/* Notification Alerts */}
@@ -1022,6 +1112,7 @@ export const SettingsView: React.FC = () => {
               ) : (
                 filteredUsers.map(profile => {
                   const isCurrentSessionUser = profile.id === user?.id;
+                  const online = isUserOnline(profile);
 
                   return (
                     <div key={profile.id} className="p-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-3 hover:bg-[#1E293B]/20 transition-colors">
@@ -1038,6 +1129,16 @@ export const SettingsView: React.FC = () => {
                                 Vous (Session Active)
                               </span>
                             )}
+                            <span
+                              className={`flex items-center gap-1 text-[9px] font-bold uppercase px-1.5 py-0.5 rounded border ${
+                                online
+                                  ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-400'
+                                  : 'bg-slate-500/10 border-slate-500/30 text-slate-400'
+                              }`}
+                            >
+                              <span className={`w-1.5 h-1.5 rounded-full ${online ? 'bg-emerald-400' : 'bg-slate-500'}`} />
+                              {online ? 'En ligne' : 'Hors ligne'}
+                            </span>
                           </div>
                           <p className="text-[11px] text-slate-400 font-mono">{profile.email}</p>
                           {profile.created_at && (
@@ -1662,7 +1763,7 @@ export const SettingsView: React.FC = () => {
                     </span>
                   </h3>
                   <p className="text-xs text-slate-400 mt-0.5">
-                    Générateur procédural d'effets acoustiques aléatoires à chaque notification et interaction.
+                    Choisis le son joué à chaque notification parmi 6 signatures acoustiques procédurales.
                   </p>
                 </div>
               </div>
@@ -1731,12 +1832,12 @@ export const SettingsView: React.FC = () => {
                 <button
                   type="button"
                   onClick={() => {
-                    const played = playTestSound();
+                    const played = playTestSound(pickRandomSoundType());
                     setLastPlayedSound(played);
                     notify({
                       type: 'sound_preview',
                       title: 'Son Aléatoire Joué',
-                      message: `Acoustique: ${played.replace('_', ' ')}`,
+                      message: `Acoustique: ${played.replace('_', ' ')} (aperçu, ne change pas ton choix)`,
                       sound: false // already played by playTestSound
                     });
                   }}
@@ -1748,12 +1849,15 @@ export const SettingsView: React.FC = () => {
               </div>
             </div>
 
-            {/* Individual Sound Presets Laboratory */}
+            {/* Individual Sound Presets — pick the one used for your real notifications */}
             <div className="space-y-3 pt-2">
               <h4 className="text-xs font-bold text-slate-300 uppercase tracking-wider flex items-center gap-2">
                 <Music className="w-3.5 h-3.5 text-[#3B82F6]" />
-                <span>Les 5 Signatures Acoustiques Aléatoires</span>
+                <span>Choisis ton son de notification</span>
               </h4>
+              <p className="text-[11px] text-slate-500 -mt-1">
+                Le son sélectionné (coché) est celui utilisé pour toutes tes notifications.
+              </p>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
                 {[
@@ -1799,22 +1903,33 @@ export const SettingsView: React.FC = () => {
                     color: 'border-slate-500/30 bg-slate-500/5 hover:border-slate-400/60',
                     tag: 'Fast Transient'
                   }
-                ].map((item) => (
+                ].map((item) => {
+                  const isSelected = soundType === item.id;
+                  return (
                   <button
                     key={item.id}
                     type="button"
                     onClick={() => {
+                      selectSoundType(item.id);
                       playTestSound(item.id);
                       setLastPlayedSound(item.id);
                       notify({
-                        type: 'info',
-                        title: `Son: ${item.name}`,
-                        message: item.desc,
+                        type: 'success',
+                        title: `Son sélectionné: ${item.name}`,
+                        message: 'Ce son sera désormais utilisé pour tes notifications.',
                         sound: false
                       });
                     }}
-                    className={`p-3.5 rounded-xl border ${item.color} text-left transition-all duration-200 group flex flex-col justify-between space-y-2`}
+                    className={`relative p-3.5 rounded-xl border ${item.color} text-left transition-all duration-200 group flex flex-col justify-between space-y-2 ${
+                      isSelected ? 'ring-2 ring-[#2563EB] shadow-lg shadow-blue-500/20' : ''
+                    }`}
                   >
+                    {isSelected && (
+                      <span className="absolute top-2 right-2 flex items-center gap-1 text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-[#2563EB] text-white">
+                        <CheckCircle2 className="w-3 h-3" />
+                        Actif
+                      </span>
+                    )}
                     <div className="flex items-center justify-between">
                       <span className="font-bold text-xs text-slate-200 group-hover:text-white flex items-center gap-1.5">
                         <Play className="w-3 h-3 text-[#3B82F6] fill-current group-hover:scale-110 transition-transform" />
@@ -1828,7 +1943,8 @@ export const SettingsView: React.FC = () => {
                       {item.desc}
                     </p>
                   </button>
-                ))}
+                  );
+                })}
               </div>
             </div>
 

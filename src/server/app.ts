@@ -605,17 +605,13 @@ export function createApp() {
     const wsId = req.params.id;
     const isGlobalAdmin = req.user!.role === 'admin';
     try {
-      const canAccess = await db.userCanAccessWorkspace(req.user!.id, wsId, isGlobalAdmin);
-      if (!canAccess) {
-        return res.status(403).json({ error: 'Accès refusé à ce workspace.' });
+      const canAdmin = await db.userIsWorkspaceAdmin(req.user!.id, wsId, isGlobalAdmin);
+      if (!canAdmin) {
+        return res.status(403).json({ error: 'Seul un administrateur peut créer un projet.' });
       }
       const { name, description, start_at, end_at, status } = req.body;
       if (!name) {
         return res.status(400).json({ error: 'Le nom du projet est requis.' });
-      }
-      const canAdmin = await db.userIsWorkspaceAdmin(req.user!.id, wsId, isGlobalAdmin);
-      if ((start_at || end_at) && !canAdmin) {
-        return res.status(403).json({ error: "Seul un administrateur du workspace peut fixer les dates d'un projet." });
       }
       const project = await db.createProject(wsId, name, description, start_at, end_at, status, req.user!.id);
       res.status(201).json(project);

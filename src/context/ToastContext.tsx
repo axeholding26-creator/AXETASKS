@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useCallback } from 'react';
-import { playRandomNotificationSound, playNotificationSound, SoundEffectType, getSoundSettings, setSoundSettings } from '../lib/sound';
+import { playPreferredNotificationSound, playNotificationSound, SoundEffectType, getSoundSettings, setSoundSettings } from '../lib/sound';
 import { CheckCircle2, AlertCircle, Info, AlertTriangle, X, Volume2, Sparkles } from 'lucide-react';
 
 export type ToastType = 'success' | 'info' | 'warning' | 'error' | 'sound_preview';
@@ -18,8 +18,10 @@ interface ToastContextType {
   removeToast: (id: string) => void;
   soundEnabled: boolean;
   soundVolume: number;
+  soundType: SoundEffectType;
   toggleSound: (enabled: boolean) => void;
   updateVolume: (vol: number) => void;
+  selectSoundType: (type: SoundEffectType) => void;
   playTestSound: (type?: SoundEffectType) => string;
 }
 
@@ -68,13 +70,18 @@ export const ToastProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     setSoundSettings({ enabled });
     setSoundConfigState((prev) => ({ ...prev, enabled }));
     if (enabled) {
-      playRandomNotificationSound();
+      playPreferredNotificationSound();
     }
   };
 
   const updateVolume = (vol: number) => {
     setSoundSettings({ volume: vol });
     setSoundConfigState((prev) => ({ ...prev, volume: vol }));
+  };
+
+  const selectSoundType = (type: SoundEffectType) => {
+    setSoundSettings({ type });
+    setSoundConfigState((prev) => ({ ...prev, type }));
   };
 
   const playTestSound = (type?: SoundEffectType): string => {
@@ -90,8 +97,10 @@ export const ToastProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         removeToast,
         soundEnabled: soundConfig.enabled,
         soundVolume: soundConfig.volume,
+        soundType: soundConfig.type,
         toggleSound,
         updateVolume,
+        selectSoundType,
         playTestSound,
       }}
     >

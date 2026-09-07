@@ -28,18 +28,29 @@ export type SoundEffectType =
 export interface SoundConfig {
   enabled: boolean;
   volume: number; // 0 to 1
+  // The preset each user picks in "Sons & Alertes" — this is what actually
+  // plays for real notifications, not just the preview/test button. Stored
+  // per-browser (same as enabled/volume), not synced server-side.
+  type: SoundEffectType;
 }
 
 const STORAGE_KEY_SOUND_ENABLED = 'axetask_sound_enabled';
 const STORAGE_KEY_SOUND_VOLUME = 'axetask_sound_volume';
+const STORAGE_KEY_SOUND_TYPE = 'axetask_sound_type';
+
+const VALID_SOUND_TYPES: SoundEffectType[] = [
+  'crystal_bell', 'marimba_pop', 'digital_ping', 'harmonic_success', 'harp_chime', 'subtle_tap',
+];
 
 export function getSoundSettings(): SoundConfig {
-  if (typeof window === 'undefined') return { enabled: true, volume: 1.0 };
+  if (typeof window === 'undefined') return { enabled: true, volume: 1.0, type: UNIFIED_NOTIFICATION_SOUND };
   const savedEnabled = localStorage.getItem(STORAGE_KEY_SOUND_ENABLED);
   const savedVol = localStorage.getItem(STORAGE_KEY_SOUND_VOLUME);
+  const savedType = localStorage.getItem(STORAGE_KEY_SOUND_TYPE) as SoundEffectType | null;
   return {
     enabled: savedEnabled !== null ? savedEnabled === 'true' : true,
     volume: savedVol !== null ? parseFloat(savedVol) : 1.0,
+    type: savedType && VALID_SOUND_TYPES.includes(savedType) ? savedType : UNIFIED_NOTIFICATION_SOUND,
   };
 }
 
@@ -50,6 +61,9 @@ export function setSoundSettings(settings: Partial<SoundConfig>): void {
   }
   if (settings.volume !== undefined) {
     localStorage.setItem(STORAGE_KEY_SOUND_VOLUME, String(settings.volume));
+  }
+  if (settings.type !== undefined) {
+    localStorage.setItem(STORAGE_KEY_SOUND_TYPE, settings.type);
   }
 }
 
@@ -217,14 +231,15 @@ export const UNIFIED_NOTIFICATION_SOUND: SoundEffectType = 'harmonic_success';
  * Main function: Plays a notification sound (defaults to unified AxeTask signature tone)
  */
 export function playNotificationSound(specificType?: SoundEffectType): string {
-  const { enabled, volume } = getSoundSettings();
+  const { enabled, volume, type: preferredType } = getSoundSettings();
   if (!enabled || volume <= 0) return 'disabled';
 
   const ctx = getAudioContext();
   if (!ctx) return 'unsupported';
 
-  // Force unified signature sound unless explicitly testing a specific sound
-  const type = specificType || UNIFIED_NOTIFICATION_SOUND;
+  // Real notifications play the user's chosen preset; an explicit
+  // specificType (used by the "test this sound" buttons) always wins.
+  const type = specificType || preferredType;
 
   try {
     const masterGain = ctx.createGain();
@@ -263,8 +278,18 @@ export function playNotificationSound(specificType?: SoundEffectType): string {
 }
 
 /**
- * Plays the unified signature notification sound for AxeTask
+ * Picks one of the 6 presets at random — used by the "surprise me" preview
+ * button in Settings, never by real notifications (those use the user's
+ * saved preference, see getSoundSettings().type).
  */
-export function playRandomNotificationSound(): string {
-  return playNotificationSound(UNIFIED_NOTIFICATION_SOUND);
+export function pickRandomSoundType(): SoundEffectType {
+  return VALID_SOUND_TYPES[Math.floor(Math.random() * VALID_SOUND_TYPES.length)];
+}
+
+/**
+ * Plays the user's currently selected/preferred notification sound —
+ * used as feedback right after enabling sound.
+ */
+export function playPreferredNotificationSound(): string {
+  return playNotificationSound();
 }
