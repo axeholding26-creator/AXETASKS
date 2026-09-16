@@ -1,4 +1,4 @@
-import { eq, and, desc, asc, inArray, ne, isNull, sql } from 'drizzle-orm';
+import { eq, and, desc, asc, inArray, ne, isNull, sql, ilike } from 'drizzle-orm';
 import { db } from './index.ts';
 import * as schema from './schema.ts';
 import crypto from 'crypto';
@@ -22,6 +22,7 @@ import {
   Message,
   AppNotification,
   NotificationType,
+  Announcement,
   TimeAllocationTask,
   TimeAllocationProject,
   TimeAllocationWorkspace
@@ -235,6 +236,11 @@ export async function deleteUser(id: string): Promise<boolean> {
     await db.update(schema.workspaces)
       .set({ created_by: null })
       .where(eq(schema.workspaces.created_by, id));
+
+    // 1b. Nullify created_by on announcements (keep the announcement, drop the authorship)
+    await db.update(schema.announcements)
+      .set({ created_by: null })
+      .where(eq(schema.announcements.created_by, id));
 
     // 2. Nullify created_by and assignee_id on tasks
     await db.update(schema.tasks)
@@ -2039,6 +2045,67 @@ export async function markConversationRead(conversationId: string, userId: strin
       .where(and(eq(schema.conversationParticipants.conversation_id, conversationId), eq(schema.conversationParticipants.user_id, userId)));
   } catch (error) {
     console.error('Failed to mark conversation read:', error);
+    throw new Error('Database query failed. Please try again later.', { cause: error });
+  }
+}
+
+// ----------------- ANNOUNCEMENTS -----------------
+
+function formatAnnouncement(
+  row: typeof schema.announcements.$inferSelect,
+  author?: { id: string; name: string; avatar_url: string | null } | null
+): Announcement {
+  return {
+    id: row.id,
+    title: row.title,
+    content: row.content,
+    created_by: row.created_by,
+    created_at: row.created_at ? row.created_at.toISOString() : new Date().toISOString(),
+    author: author || undefined,
+  };
+}
+
+export async function getAnnouncements(search?: string): Promise<Announcement[]> {
+  try {
+    const rows = await db.select().from(schema.announcements)
+      .where(search?.trim() ? ilike(schema.announcements.title, `%${search.trim()}%`) : undefined)
+      .orderBy(desc(schema.announcements.created_at));
+
+    const authorIds = [...new Set(rows.map(r => r.created_by).filter(Boolean))] as string[];
+    const authors = authorIds.length > 0
+      ? await db.select({ id: schema.users.id, name: schema.users.name, avatar_url: schema.users.avatar_url })
+          .from(schema.users).where(inArray(schema.users.id, authorIds))
+      : [];
+
+    return rows.map(r => formatAnnouncement(r, r.created_by ? authors.find(a => a.id === r.created_by) || null : null));
+  } catch (error) {
+    console.error('Failed to get announcements:', error);
+    throw new Error('Database query failed. Please try again later.', { cause: error });
+  }
+}
+
+export async function createAnnouncement(title: string, content: string, createdBy: string): Promise<Announcement> {
+  try {
+    const [created] = await db.insert(schema.announcements).values({
+      id: generateId('ann'),
+      title,
+      content,
+      created_by: createdBy,
+    }).returning();
+    const author = await getUserById(createdBy);
+    return formatAnnouncement(created, author ? { id: author.id, name: author.name, avatar_url: author.avatar_url } : null);
+  } catch (error) {
+    console.error('Failed to create announcement:', error);
+    throw new Error('Database query failed. Please try again later.', { cause: error });
+  }
+}
+
+export async function deleteAnnouncement(id: string): Promise<boolean> {
+  try {
+    const result = await db.delete(schema.announcements).where(eq(schema.announcements.id, id)).returning();
+    return result.length > 0;
+  } catch (error) {
+    console.error('Failed to delete announcement:', error);
     throw new Error('Database query failed. Please try again later.', { cause: error });
   }
 }

@@ -11,6 +11,7 @@ import { WorkspaceView } from './components/workspaces/WorkspaceView';
 import { ProjectView } from './components/projects/ProjectView';
 import { TimeTrackingView } from './components/time/TimeTrackingView';
 import { MessagesView } from './components/messages/MessagesView';
+import { AnnouncementsView } from './components/announcements/AnnouncementsView';
 import { SettingsView } from './components/settings/SettingsView';
 import { TaskDetailDrawer } from './components/tasks/TaskDetailDrawer';
 import { CreateTaskModal } from './components/modals/CreateTaskModal';
@@ -25,6 +26,7 @@ type NavigationTab =
   | 'project_detail'
   | 'time_tracking'
   | 'messages'
+  | 'announcements'
   | 'settings';
 
 function MainAppLayout() {
@@ -72,6 +74,7 @@ function MainAppLayout() {
         onOpenTimeTracking={() => setCurrentView('time_tracking')}
         onOpenDashboard={() => setCurrentView('dashboard')}
         onOpenWorkspaces={() => setCurrentView('workspaces')}
+        onOpenAnnouncements={() => setCurrentView('announcements')}
         onMenuToggle={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
       />
 
@@ -118,6 +121,8 @@ function MainAppLayout() {
         {currentView === 'time_tracking' && <TimeTrackingView />}
 
         {currentView === 'messages' && <MessagesView />}
+
+        {currentView === 'announcements' && <AnnouncementsView />}
 
         {currentView === 'settings' && <SettingsView />}
       </main>

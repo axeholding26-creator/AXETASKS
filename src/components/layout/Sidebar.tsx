@@ -17,10 +17,11 @@ import {
   Users,
   Sparkles,
   Kanban,
-  MessageSquare
+  MessageSquare,
+  Megaphone
 } from 'lucide-react';
 
-type SidebarView = 'dashboard' | 'workspaces' | 'workspace_detail' | 'project_detail' | 'time_tracking' | 'messages' | 'settings';
+type SidebarView = 'dashboard' | 'workspaces' | 'workspace_detail' | 'project_detail' | 'time_tracking' | 'messages' | 'announcements' | 'settings';
 
 interface SidebarProps {
   currentView: SidebarView;
@@ -238,6 +239,20 @@ export const Sidebar: React.FC<SidebarProps> = ({ currentView, onNavigate, isOpe
                 )}
               </div>
               <span>Messages</span>
+            </div>
+          </button>
+
+          <button
+            onClick={() => onNavigate('announcements')}
+            className={`w-full flex items-center justify-between px-2.5 py-1.5 rounded text-xs transition-all ${
+              currentView === 'announcements'
+                ? 'bg-[#2563EB]/15 text-[#60A5FA] font-bold border border-[#2563EB]/40 shadow-sm'
+                : 'text-slate-300 hover:bg-[#1E293B] hover:text-slate-100'
+            }`}
+          >
+            <div className="flex items-center gap-2">
+              <Megaphone className="w-3.5 h-3.5 text-amber-400" />
+              <span>Annonces</span>
             </div>
           </button>
         </div>

@@ -16,7 +16,8 @@ import {
   Message,
   AppNotification,
   JobFunction,
-  TimeAllocationWorkspace
+  TimeAllocationWorkspace,
+  Announcement
 } from '../types';
 
 const TOKEN_KEY = 'axetask_jwt_token';
@@ -368,6 +369,21 @@ export const api = {
     fetchWithAuth<{ success: boolean }>(`/api/conversations/${conversationId}/read`, {
       method: 'POST',
     }),
+
+  // Announcements
+  getAnnouncements: (search?: string) => {
+    const qs = search?.trim() ? `?q=${encodeURIComponent(search.trim())}` : '';
+    return fetchWithAuth<Announcement[]>(`/api/announcements${qs}`);
+  },
+
+  createAnnouncement: (title: string, content: string) =>
+    fetchWithAuth<Announcement>('/api/announcements', {
+      method: 'POST',
+      body: JSON.stringify({ title, content }),
+    }),
+
+  deleteAnnouncement: (id: string) =>
+    fetchWithAuth<{ success: boolean }>(`/api/announcements/${id}`, { method: 'DELETE' }),
 
   // Notifications
   getNotifications: () => fetchWithAuth<AppNotification[]>('/api/notifications'),

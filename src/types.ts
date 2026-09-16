@@ -238,7 +238,17 @@ export type NotificationType =
   | 'workspace_removed'
   | 'workspace_role_changed'
   | 'project_completed'
-  | 'project_playbook_reminder';
+  | 'project_playbook_reminder'
+  | 'announcement';
+
+export interface Announcement {
+  id: string;
+  title: string;
+  content: string;
+  created_by?: string | null;
+  created_at: string;
+  author?: { id: string; name: string; avatar_url?: string | null } | null;
+}
 
 export interface AppNotification {
   id: string;

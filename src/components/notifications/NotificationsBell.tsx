@@ -20,6 +20,7 @@ import {
   ShieldCheck,
   PartyPopper,
   BookOpen,
+  Megaphone,
 } from 'lucide-react';
 
 const TYPE_META: Record<AppNotification['type'], { icon: React.ReactNode; color: string }> = {
@@ -33,6 +34,7 @@ const TYPE_META: Record<AppNotification['type'], { icon: React.ReactNode; color:
   workspace_role_changed: { icon: <ShieldCheck className="w-3.5 h-3.5" />, color: 'text-[#60A5FA]' },
   project_completed: { icon: <PartyPopper className="w-3.5 h-3.5" />, color: 'text-emerald-400' },
   project_playbook_reminder: { icon: <BookOpen className="w-3.5 h-3.5" />, color: 'text-amber-400' },
+  announcement: { icon: <Megaphone className="w-3.5 h-3.5" />, color: 'text-amber-400' },
 };
 
 const ANNOUNCED_IDS_KEY = 'axetask_announced_notification_ids';
@@ -67,9 +69,10 @@ function formatRelativeTime(iso: string): string {
 
 interface NotificationsBellProps {
   onOpenWorkspaces: () => void;
+  onOpenAnnouncements: () => void;
 }
 
-export const NotificationsBell: React.FC<NotificationsBellProps> = ({ onOpenWorkspaces }) => {
+export const NotificationsBell: React.FC<NotificationsBellProps> = ({ onOpenWorkspaces, onOpenAnnouncements }) => {
   const { setSelectedTaskId, setCurrentWorkspaceId, workspaces } = useWorkspace();
   const { notify } = useToast();
 
@@ -224,6 +227,8 @@ export const NotificationsBell: React.FC<NotificationsBellProps> = ({ onOpenWork
       const stillMember = workspaces.some(w => w.id === n.workspace_id);
       if (stillMember) setCurrentWorkspaceId(n.workspace_id);
       onOpenWorkspaces();
+    } else if (n.type === 'announcement') {
+      onOpenAnnouncements();
     }
   };
 

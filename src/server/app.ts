@@ -1281,6 +1281,64 @@ export function createApp() {
     }
   });
 
+  // --- Announcements ---
+  // A dedicated space, separate from per-workspace notifications: any
+  // authenticated user can read them, but only global admins can post one.
+
+  app.get('/api/announcements', authMiddleware, async (req: AuthenticatedRequest, res) => {
+    try {
+      const { q } = req.query as { q?: string };
+      const announcements = await db.getAnnouncements(q);
+      res.json(announcements);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message || 'Erreur lors de la récupération des annonces.' });
+    }
+  });
+
+  app.post('/api/announcements', authMiddleware, async (req: AuthenticatedRequest, res) => {
+    if (req.user!.role !== 'admin') {
+      return res.status(403).json({ error: 'Seul un administrateur peut publier une annonce.' });
+    }
+    const { title, content } = req.body;
+    if (!title || !title.trim()) {
+      return res.status(400).json({ error: "Le titre de l'annonce est requis." });
+    }
+    if (!content || !content.trim()) {
+      return res.status(400).json({ error: "Le contenu de l'annonce est requis." });
+    }
+    try {
+      const announcement = await db.createAnnouncement(title.trim(), content.trim(), req.user!.id);
+
+      const allUsers = await db.getAllUsers();
+      for (const recipient of allUsers) {
+        if (recipient.id === req.user!.id) continue;
+        db.createNotification({
+          user_id: recipient.id,
+          type: 'announcement',
+          title: 'Nouvelle annonce',
+          message: announcement.title,
+        }).catch(err => console.error('Failed to create announcement notification:', err));
+      }
+
+      res.status(201).json(announcement);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message || "Erreur lors de la publication de l'annonce." });
+    }
+  });
+
+  app.delete('/api/announcements/:id', authMiddleware, async (req: AuthenticatedRequest, res) => {
+    if (req.user!.role !== 'admin') {
+      return res.status(403).json({ error: 'Seul un administrateur peut supprimer une annonce.' });
+    }
+    try {
+      const ok = await db.deleteAnnouncement(req.params.id);
+      if (!ok) return res.status(404).json({ error: 'Annonce introuvable.' });
+      res.json({ success: true });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message || "Erreur lors de la suppression de l'annonce." });
+    }
+  });
+
   // --- Notifications ---
 
   app.get('/api/notifications', authMiddleware, async (req: AuthenticatedRequest, res) => {

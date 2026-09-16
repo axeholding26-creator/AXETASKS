@@ -152,6 +152,14 @@ export const messages = pgTable('messages', {
   created_at: timestamp('created_at').defaultNow(),
 });
 
+export const announcements = pgTable('announcements', {
+  id: text('id').primaryKey(),
+  title: text('title').notNull(),
+  content: text('content').notNull(),
+  created_by: text('created_by').references(() => users.id),
+  created_at: timestamp('created_at').defaultNow(),
+});
+
 export const notifications = pgTable('notifications', {
   id: text('id').primaryKey(),
   user_id: text('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
@@ -168,6 +176,13 @@ export const notifications = pgTable('notifications', {
 // Relationships
 export const jobFunctionsRelations = relations(jobFunctions, ({ many }) => ({
   users: many(users),
+}));
+
+export const announcementsRelations = relations(announcements, ({ one }) => ({
+  author: one(users, {
+    fields: [announcements.created_by],
+    references: [users.id],
+  }),
 }));
 
 export const usersRelations = relations(users, ({ one, many }) => ({

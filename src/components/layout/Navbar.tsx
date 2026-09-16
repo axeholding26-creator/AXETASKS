@@ -28,6 +28,7 @@ interface NavbarProps {
   onOpenTimeTracking: () => void;
   onOpenDashboard: () => void;
   onOpenWorkspaces: () => void;
+  onOpenAnnouncements: () => void;
   onMenuToggle?: () => void;
 }
 
@@ -36,6 +37,7 @@ export const Navbar: React.FC<NavbarProps> = ({
   onOpenTimeTracking,
   onOpenDashboard,
   onOpenWorkspaces,
+  onOpenAnnouncements,
   onMenuToggle,
 }) => {
   const { user, logout } = useAuth();
@@ -248,7 +250,7 @@ export const Navbar: React.FC<NavbarProps> = ({
           task detail page now, not here. */}
       <div className="flex items-center gap-1.5 sm:gap-2.5 shrink-0">
         {/* Notifications */}
-        <NotificationsBell onOpenWorkspaces={onOpenWorkspaces} />
+        <NotificationsBell onOpenWorkspaces={onOpenWorkspaces} onOpenAnnouncements={onOpenAnnouncements} />
 
         {/* Quick New Task Button */}
         <button
