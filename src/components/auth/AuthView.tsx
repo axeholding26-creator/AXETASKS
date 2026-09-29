@@ -45,7 +45,7 @@ export const AuthView: React.FC = () => {
       <div className="w-full max-w-sm relative z-10 space-y-4">
         {/* Brand Logo & Presentation */}
         <div className="text-center space-y-1.5 flex flex-col items-center">
-          <BrandLogo size="md" withText={true} className="justify-center" />
+          <BrandLogo size="xl" className="justify-center" />
           <p className="text-xs text-slate-400 max-w-xs mx-auto leading-relaxed">
             Plateforme de productivité &amp; gestion multi-ventures pour équipes agiles.
           </p>

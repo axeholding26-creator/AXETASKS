@@ -16,18 +16,20 @@ export const BrandLogo: React.FC<BrandLogoProps> = ({
     sm: { icon: 'w-14 h-14', text: 'text-lg' },
     md: { icon: 'w-16 h-16', text: 'text-2xl' },
     lg: { icon: 'w-24 h-24', text: 'text-3xl' },
-    xl: { icon: 'w-32 h-32', text: 'text-5xl' },
+    xl: { icon: 'w-36 h-36 sm:w-40 sm:h-40', text: 'text-5xl' },
   };
 
   const { icon, text } = sizeMap[size];
 
   return (
     <div className={`flex items-center gap-3 select-none ${className}`}>
-      {/* Brand Image Logo (axetask.png) */}
+      {/* Icon-only mark next to the text wordmark (no duplicate "AxeTask"),
+          full logo with its own wordmark otherwise. Both PNGs are trimmed
+          to their content so the logo fills the box it's given. */}
       <div className={`relative ${icon} shrink-0 flex items-center justify-center`}>
         <img
-          src="/axetask.png"
-          alt="AxeTask Logo"
+          src={withText ? '/axetask-mark.png' : '/axetask.png'}
+          alt="AxeTask"
           referrerPolicy="no-referrer"
           className="w-full h-full object-contain filter drop-shadow-[0_2px_12px_rgba(37,99,235,0.35)] transition-transform duration-300 hover:scale-105"
           onError={(e) => {

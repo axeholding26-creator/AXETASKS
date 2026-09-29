@@ -11,7 +11,11 @@ export default defineConfig(() => {
       tailwindcss(),
       VitePWA({
         registerType: 'autoUpdate',
-        includeAssets: ['axetask.png'],
+        includeAssets: ['axetask.png', 'axetask-mark.png', 'favicon.png', 'apple-touch-icon.png'],
+        workbox: {
+          // Adds the Web Push handlers to the generated service worker.
+          importScripts: ['push-sw.js'],
+        },
         manifest: {
           name: 'AxeTask Enterprise',
           short_name: 'AxeTask',
@@ -21,16 +25,9 @@ export default defineConfig(() => {
           display: 'standalone',
           start_url: '/',
           icons: [
-            {
-              src: '/axetask.png',
-              sizes: '192x192',
-              type: 'image/png'
-            },
-            {
-              src: '/axetask.png',
-              sizes: '512x512',
-              type: 'image/png'
-            }
+            { src: '/icon-192.png', sizes: '192x192', type: 'image/png' },
+            { src: '/icon-512.png', sizes: '512x512', type: 'image/png' },
+            { src: '/icon-maskable-512.png', sizes: '512x512', type: 'image/png', purpose: 'maskable' },
           ]
         },
         devOptions: {

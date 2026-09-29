@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { User } from '../types';
 import { api, getStoredToken, setStoredToken, removeStoredToken } from '../lib/api';
+import { disablePush } from '../lib/push';
 
 interface AuthContextType {
   user: User | null;
@@ -90,7 +91,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   const logout = () => {
-    removeStoredToken();
+    // Stop pushing this user's notifications to a device they've left.
+    disablePush().finally(removeStoredToken);
     setUser(null);
     clearError();
   };

@@ -173,6 +173,24 @@ export const notifications = pgTable('notifications', {
   created_at: timestamp('created_at').defaultNow(),
 });
 
+// One row per browser/device that accepted Web Push for a user.
+export const pushSubscriptions = pgTable('push_subscriptions', {
+  endpoint: text('endpoint').primaryKey(),
+  user_id: text('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  p256dh: text('p256dh').notNull(),
+  auth: text('auth').notNull(),
+  created_at: timestamp('created_at').defaultNow(),
+});
+
+// One row per installed mobile app (native FCM device token).
+export const mobilePushTokens = pgTable('mobile_push_tokens', {
+  token: text('token').primaryKey(),
+  user_id: text('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  // Android notification channel (= the sound the user picked in the app).
+  channel: text('channel'),
+  created_at: timestamp('created_at').defaultNow(),
+});
+
 // Relationships
 export const jobFunctionsRelations = relations(jobFunctions, ({ many }) => ({
   users: many(users),

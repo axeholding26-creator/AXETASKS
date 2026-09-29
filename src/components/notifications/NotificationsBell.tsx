@@ -3,6 +3,7 @@ import { useWorkspace } from '../../context/WorkspaceContext';
 import { useToast } from '../../context/ToastContext';
 import { api } from '../../lib/api';
 import { playNotificationSound } from '../../lib/sound';
+import { enablePush } from '../../lib/push';
 import { AppNotification } from '../../types';
 import {
   Bell,
@@ -107,17 +108,17 @@ export const NotificationsBell: React.FC<NotificationsBellProps> = ({ onOpenWork
 
           const canUseDeviceNotification = 'Notification' in window && Notification.permission === 'granted';
           if (canUseDeviceNotification) {
-            newOnes.slice(0, 3).forEach(n => {
-              const deviceNotif = new Notification(n.title, {
-                body: n.message || undefined,
-                icon: '/axetask.png',
-                tag: n.id,
+            // Same `tag` as the Web Push one, so a notification already
+            // shown by the service worker is replaced, not duplicated.
+            // registration.showNotification because `new Notification()`
+            // throws on Android Chrome.
+            navigator.serviceWorker?.getRegistration().then(reg => {
+              newOnes.slice(0, 3).forEach(n => {
+                const opts = { body: n.message || undefined, icon: '/icon-192.png', tag: n.id };
+                if (reg) reg.showNotification(n.title, opts);
+                else new Notification(n.title, opts).onclick = () => window.focus();
               });
-              deviceNotif.onclick = () => {
-                window.focus();
-                deviceNotif.close();
-              };
-            });
+            }).catch(() => {});
           } else {
             // No device-notification permission — fall back to the in-app
             // toast so something still visibly signals the arrival. Sound
@@ -150,6 +151,18 @@ export const NotificationsBell: React.FC<NotificationsBellProps> = ({ onOpenWork
   }, [notify]);
 
   useEffect(() => {
+    enablePush();
+    // Browsers only allow the permission prompt from a user gesture, so ask
+    // on the first interaction instead of waiting for a click on the bell.
+    if (!('Notification' in window) || Notification.permission !== 'default') return;
+    const ask = () => {
+      Notification.requestPermission().then(p => { if (p === 'granted') enablePush(); }).catch(() => {});
+    };
+    document.addEventListener('pointerdown', ask, { once: true });
+    return () => document.removeEventListener('pointerdown', ask);
+  }, []);
+
+  useEffect(() => {
     pollNotifications();
     const interval = setInterval(pollNotifications, 20000);
     return () => clearInterval(interval);
@@ -171,7 +184,7 @@ export const NotificationsBell: React.FC<NotificationsBellProps> = ({ onOpenWork
     if (next) {
       pollNotifications();
       if ('Notification' in window && Notification.permission === 'default') {
-        Notification.requestPermission().catch(() => {});
+        Notification.requestPermission().then(p => { if (p === 'granted') enablePush(); }).catch(() => {});
       }
     }
   };

@@ -539,7 +539,7 @@ export function createApp() {
 
       if (updated.user_id !== req.user!.id) {
         const workspace = await db.getWorkspaceById(updated.workspace_id);
-        db.createNotification({
+        await db.createNotification({
           user_id: updated.user_id,
           type: 'workspace_role_changed',
           title: 'Rôle modifié',
@@ -570,7 +570,7 @@ export function createApp() {
 
       if (removed && removed.user_id !== req.user!.id) {
         const workspace = await db.getWorkspaceById(removed.workspace_id);
-        db.createNotification({
+        await db.createNotification({
           user_id: removed.user_id,
           type: 'workspace_removed',
           title: "Retiré d'un espace de travail",
@@ -828,7 +828,7 @@ export function createApp() {
       }
 
       if (assignee_id && assignee_id !== req.user!.id) {
-        db.createNotification({
+        await db.createNotification({
           user_id: assignee_id,
           type: 'task_assigned',
           title: 'Nouvelle tâche assignée',
@@ -907,7 +907,7 @@ export function createApp() {
         await db.ensureWorkspaceMembership(task.workspace_id, assignee_id);
       }
       if (assigneeChanged && assignee_id && assignee_id !== req.user!.id) {
-        db.createNotification({
+        await db.createNotification({
           user_id: assignee_id,
           type: 'task_assigned',
           title: 'Tâche assignée',
@@ -929,7 +929,7 @@ export function createApp() {
         recipients.delete(req.user!.id);
         if (assigneeChanged) recipients.delete(assignee_id);
         for (const recipientId of recipients) {
-          db.createNotification({
+          await db.createNotification({
             user_id: recipientId,
             type: 'task_status_changed',
             title: 'Statut de tâche modifié',
@@ -1055,7 +1055,7 @@ export function createApp() {
       const commentRecipients = new Set([task.assignee_id, task.created_by].filter(Boolean) as string[]);
       commentRecipients.delete(req.user!.id);
       for (const recipientId of commentRecipients) {
-        db.createNotification({
+        await db.createNotification({
           user_id: recipientId,
           type: 'task_comment',
           title: 'Nouveau commentaire',
@@ -1260,6 +1260,8 @@ export function createApp() {
         return res.status(403).json({ error: 'Accès refusé à cette conversation.' });
       }
       const message = await db.sendMessage(conversationId, req.user!.id, content, reply_to_id);
+      await db.pushNewMessage(conversationId, req.user!, message.content)
+        .catch(err => console.error('Failed to push new message:', err));
       res.status(201).json(message);
     } catch (err: any) {
       res.status(500).json({ error: err.message || 'Erreur lors de l’envoi du message.' });
@@ -1312,7 +1314,7 @@ export function createApp() {
       const allUsers = await db.getAllUsers();
       for (const recipient of allUsers) {
         if (recipient.id === req.user!.id) continue;
-        db.createNotification({
+        await db.createNotification({
           user_id: recipient.id,
           type: 'announcement',
           title: 'Nouvelle annonce',
@@ -1336,6 +1338,57 @@ export function createApp() {
       res.json({ success: true });
     } catch (err: any) {
       res.status(500).json({ error: err.message || "Erreur lors de la suppression de l'annonce." });
+    }
+  });
+
+  // --- Web Push ---
+
+  app.get('/api/push/public-key', (_req, res) => {
+    res.json({ key: process.env.VAPID_PUBLIC_KEY || null });
+  });
+
+  app.post('/api/push/subscribe', authMiddleware, async (req: AuthenticatedRequest, res) => {
+    const sub = req.body;
+    if (typeof sub?.endpoint !== 'string' || !sub.endpoint.startsWith('https://') ||
+        typeof sub?.keys?.p256dh !== 'string' || typeof sub?.keys?.auth !== 'string') {
+      return res.status(400).json({ error: 'Abonnement push invalide.' });
+    }
+    try {
+      await db.savePushSubscription(req.user!.id, sub);
+      res.json({ success: true });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message || "Erreur lors de l'abonnement push." });
+    }
+  });
+
+  app.post('/api/push/unsubscribe', authMiddleware, async (req: AuthenticatedRequest, res) => {
+    try {
+      if (typeof req.body?.endpoint === 'string') await db.deletePushSubscription(req.body.endpoint, req.user!.id);
+      res.json({ success: true });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message || 'Erreur lors du désabonnement push.' });
+    }
+  });
+
+  app.post('/api/push/mobile/register', authMiddleware, async (req: AuthenticatedRequest, res) => {
+    const { token, channel } = req.body || {};
+    if (typeof token !== 'string' || !token || token.length > 4096) {
+      return res.status(400).json({ error: 'Jeton push invalide.' });
+    }
+    try {
+      await db.saveMobilePushToken(req.user!.id, token, typeof channel === 'string' ? channel.slice(0, 64) : null);
+      res.json({ success: true, enabled: !!process.env.FIREBASE_SERVICE_ACCOUNT });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message || "Erreur lors de l'enregistrement du jeton push." });
+    }
+  });
+
+  app.post('/api/push/mobile/unregister', authMiddleware, async (req: AuthenticatedRequest, res) => {
+    try {
+      if (typeof req.body?.token === 'string') await db.deleteMobilePushToken(req.body.token, req.user!.id);
+      res.json({ success: true });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message || 'Erreur lors de la suppression du jeton push.' });
     }
   });
 

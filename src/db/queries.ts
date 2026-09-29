@@ -3,6 +3,9 @@ import { db } from './index.ts';
 import * as schema from './schema.ts';
 import crypto from 'crypto';
 import bcrypt from 'bcryptjs';
+import webpush from 'web-push';
+import { initializeApp as initFirebaseAdmin, cert, getApps as getFirebaseApps } from 'firebase-admin/app';
+import { getMessaging } from 'firebase-admin/messaging';
 import {
   User,
   Workspace,
@@ -2132,6 +2135,147 @@ function formatNotification(
   };
 }
 
+// ----------------- WEB PUSH -----------------
+// Delivers notifications to the device even when the app tab is closed
+// (the service worker in public/push-sw.js displays them). No-op when the
+// VAPID keys aren't configured.
+let vapidReady: boolean | null = null;
+function ensureVapid(): boolean {
+  if (vapidReady !== null) return vapidReady;
+  const { VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY, VAPID_SUBJECT } = process.env;
+  vapidReady = !!(VAPID_PUBLIC_KEY && VAPID_PRIVATE_KEY);
+  if (vapidReady) webpush.setVapidDetails(VAPID_SUBJECT || 'mailto:admin@axetask.app', VAPID_PUBLIC_KEY!, VAPID_PRIVATE_KEY!);
+  return vapidReady;
+}
+
+export async function savePushSubscription(userId: string, sub: { endpoint: string; keys: { p256dh: string; auth: string } }) {
+  await db.insert(schema.pushSubscriptions)
+    .values({ endpoint: sub.endpoint, user_id: userId, p256dh: sub.keys.p256dh, auth: sub.keys.auth })
+    .onConflictDoUpdate({
+      target: schema.pushSubscriptions.endpoint,
+      set: { user_id: userId, p256dh: sub.keys.p256dh, auth: sub.keys.auth },
+    });
+}
+
+export async function deletePushSubscription(endpoint: string, userId: string) {
+  await db.delete(schema.pushSubscriptions).where(and(
+    eq(schema.pushSubscriptions.endpoint, endpoint),
+    eq(schema.pushSubscriptions.user_id, userId),
+  ));
+}
+
+// Native mobile app (Android) push goes through Firebase Cloud Messaging.
+// No-op until FIREBASE_SERVICE_ACCOUNT (the service-account JSON of the
+// Firebase project the app's google-services.json belongs to) is set.
+let fcmReady: boolean | null = null;
+function ensureFcm(): boolean {
+  if (fcmReady !== null) return fcmReady;
+  const raw = process.env.FIREBASE_SERVICE_ACCOUNT;
+  fcmReady = false;
+  if (!raw) return false;
+  try {
+    if (!getFirebaseApps().length) initFirebaseAdmin({ credential: cert(JSON.parse(raw)) });
+    fcmReady = true;
+  } catch (err) {
+    console.error('Invalid FIREBASE_SERVICE_ACCOUNT:', err);
+  }
+  return fcmReady;
+}
+
+export async function saveMobilePushToken(userId: string, token: string, channel?: string | null) {
+  await db.insert(schema.mobilePushTokens)
+    .values({ token, user_id: userId, channel: channel || null })
+    .onConflictDoUpdate({ target: schema.mobilePushTokens.token, set: { user_id: userId, channel: channel || null } });
+}
+
+export async function deleteMobilePushToken(token: string, userId: string) {
+  await db.delete(schema.mobilePushTokens).where(and(
+    eq(schema.mobilePushTokens.token, token),
+    eq(schema.mobilePushTokens.user_id, userId),
+  ));
+}
+
+export interface PushPayload {
+  id: string;
+  title: string;
+  body?: string;
+  url: string;
+  // Lets the mobile app open the right screen on tap.
+  type?: string;
+  task_id?: string;
+  workspace_id?: string;
+  conversation_id?: string;
+}
+
+async function sendWebPush(userId: string, payload: PushPayload) {
+  if (!ensureVapid()) return;
+  const subs = await db.select().from(schema.pushSubscriptions).where(eq(schema.pushSubscriptions.user_id, userId));
+  await Promise.all(subs.map(async s => {
+    try {
+      await webpush.sendNotification(
+        { endpoint: s.endpoint, keys: { p256dh: s.p256dh, auth: s.auth } },
+        JSON.stringify(payload),
+        { TTL: 24 * 60 * 60, urgency: 'high' },
+      );
+    } catch (err: any) {
+      // 404/410 = the browser dropped this subscription; forget it.
+      if (err?.statusCode === 404 || err?.statusCode === 410) {
+        await db.delete(schema.pushSubscriptions).where(eq(schema.pushSubscriptions.endpoint, s.endpoint));
+      } else {
+        console.error('Web push failed:', err?.statusCode, err?.body || err);
+      }
+    }
+  }));
+}
+
+async function sendMobilePush(userId: string, payload: PushPayload) {
+  if (!ensureFcm()) return;
+  const tokens = await db.select().from(schema.mobilePushTokens).where(eq(schema.mobilePushTokens.user_id, userId));
+  await Promise.all(tokens.map(async t => {
+    try {
+      await getMessaging().send({
+        token: t.token,
+        notification: { title: payload.title, body: payload.body },
+        data: Object.fromEntries(Object.entries(payload).filter(([, v]) => v != null).map(([k, v]) => [k, String(v)])),
+        android: {
+          priority: 'high',
+          ttl: 24 * 60 * 60 * 1000,
+          notification: { channelId: t.channel || 'default', tag: payload.id, color: '#2563EB' },
+        },
+      });
+    } catch (err: any) {
+      if (err?.code === 'messaging/registration-token-not-registered' || err?.code === 'messaging/invalid-argument') {
+        await db.delete(schema.mobilePushTokens).where(eq(schema.mobilePushTokens.token, t.token));
+      } else {
+        console.error('Mobile push failed:', err?.code || err);
+      }
+    }
+  }));
+}
+
+// Best-effort: never fails the caller because of push.
+export async function sendPushToUser(userId: string, payload: PushPayload) {
+  try {
+    await Promise.all([sendWebPush(userId, payload), sendMobilePush(userId, payload)]);
+  } catch (err) {
+    console.error('Failed to send push:', err);
+  }
+}
+
+// Messages aren't stored as notifications, so they're pushed directly.
+export async function pushNewMessage(conversationId: string, sender: { id: string; name: string }, content: string) {
+  const participants = await db.select().from(schema.conversationParticipants)
+    .where(eq(schema.conversationParticipants.conversation_id, conversationId));
+  await Promise.all(participants.filter(p => p.user_id !== sender.id).map(p => sendPushToUser(p.user_id, {
+    id: `conv-${conversationId}`,
+    title: `Message de ${sender.name}`,
+    body: content.length > 140 ? `${content.slice(0, 140)}…` : content,
+    url: '/',
+    type: 'message',
+    conversation_id: conversationId,
+  })));
+}
+
 export async function createNotification(data: {
   user_id: string;
   type: NotificationType;
@@ -2150,6 +2294,15 @@ export async function createNotification(data: {
       task_id: data.task_id,
       workspace_id: data.workspace_id,
     }).returning();
+    await sendPushToUser(data.user_id, {
+      id: created.id,
+      title: data.title,
+      body: data.message,
+      url: '/',
+      type: data.type,
+      task_id: data.task_id,
+      workspace_id: data.workspace_id,
+    });
     return formatNotification(created);
   } catch (error) {
     console.error('Failed to create notification:', error);
