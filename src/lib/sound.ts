@@ -45,11 +45,10 @@ const VALID_SOUND_TYPES: SoundEffectType[] = [
 export function getSoundSettings(): SoundConfig {
   if (typeof window === 'undefined') return { enabled: true, volume: 1.0, type: UNIFIED_NOTIFICATION_SOUND };
   const savedEnabled = localStorage.getItem(STORAGE_KEY_SOUND_ENABLED);
-  const savedVol = localStorage.getItem(STORAGE_KEY_SOUND_VOLUME);
   const savedType = localStorage.getItem(STORAGE_KEY_SOUND_TYPE) as SoundEffectType | null;
   return {
     enabled: savedEnabled !== null ? savedEnabled === 'true' : true,
-    volume: savedVol !== null ? parseFloat(savedVol) : 1.0,
+    volume: 1.0, // always max: notifications must be loud
     type: savedType && VALID_SOUND_TYPES.includes(savedType) ? savedType : UNIFIED_NOTIFICATION_SOUND,
   };
 }

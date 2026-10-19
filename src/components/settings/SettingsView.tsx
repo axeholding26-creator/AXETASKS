@@ -65,10 +65,8 @@ export const SettingsView: React.FC = () => {
   const {
     notify,
     soundEnabled,
-    soundVolume,
     soundType,
     toggleSound,
-    updateVolume,
     selectSoundType,
     playTestSound
   } = useToast();
@@ -1806,32 +1804,6 @@ export const SettingsView: React.FC = () => {
 
             {/* Volume Slider & Random Tester */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-1">
-              {/* Volume Slider */}
-              <div className="p-4 rounded-lg bg-[#090D16] border border-[#1E293B] space-y-3">
-                <div className="flex items-center justify-between text-xs">
-                  <span className="font-bold text-slate-300 uppercase tracking-wider flex items-center gap-1.5">
-                    <Sliders className="w-3.5 h-3.5 text-[#3B82F6]" />
-                    Volume Principal
-                  </span>
-                  <span className="font-mono font-bold text-[#60A5FA]">
-                    {Math.round(soundVolume * 100)}%
-                  </span>
-                </div>
-                <input
-                  type="range"
-                  min="0"
-                  max="1"
-                  step="0.05"
-                  value={soundVolume}
-                  disabled={!soundEnabled}
-                  onChange={(e) => updateVolume(parseFloat(e.target.value))}
-                  className="w-full h-2 bg-[#1E293B] rounded-lg appearance-none cursor-pointer accent-[#2563EB]"
-                />
-                <p className="text-[11px] text-slate-500">
-                  Ajuste le niveau de sortie pour l'ensemble des synthétiseurs et carillons de l'application.
-                </p>
-              </div>
-
               {/* Random Sound Tester Button */}
               <div className="p-4 rounded-lg bg-gradient-to-br from-[#090D16] to-[#0E1726] border border-[#2563EB]/30 flex flex-col justify-between space-y-3">
                 <div className="flex items-center justify-between">
