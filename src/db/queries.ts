@@ -714,6 +714,7 @@ export async function getWorkspaceProjects(workspaceId: string): Promise<Project
         end_at: p.end_at ? p.end_at.toISOString() : null,
         completed_at: p.completed_at ? p.completed_at.toISOString() : null,
         stopped_at: p.stopped_at ? p.stopped_at.toISOString() : null,
+        link: p.link || null,
         created_by: p.created_by,
         created_at: p.created_at ? p.created_at.toISOString() : new Date().toISOString(),
         tasks_count: pTasks.length,
@@ -753,6 +754,7 @@ export async function getProjectById(id: string): Promise<Project | null> {
       end_at: p.end_at ? p.end_at.toISOString() : null,
       completed_at: p.completed_at ? p.completed_at.toISOString() : null,
       stopped_at: p.stopped_at ? p.stopped_at.toISOString() : null,
+      link: p.link || null,
       created_by: p.created_by,
       created_at: p.created_at ? p.created_at.toISOString() : new Date().toISOString(),
       tasks_count: pTasks.length,
@@ -817,7 +819,7 @@ export async function createProject(
   }
 }
 
-export async function updateProject(id: string, updates: Partial<{ name: string; description: string; status: string; start_at: string | null; end_at: string | null; stopped_at: string | null }>): Promise<Project | null> {
+export async function updateProject(id: string, updates: Partial<{ name: string; description: string; status: string; start_at: string | null; end_at: string | null; stopped_at: string | null; link: string | null }>): Promise<Project | null> {
   try {
     const [updated] = await db.update(schema.projects)
       .set({
@@ -827,6 +829,7 @@ export async function updateProject(id: string, updates: Partial<{ name: string;
         ...(updates.start_at !== undefined ? { start_at: updates.start_at ? new Date(updates.start_at) : null } : {}),
         ...(updates.end_at !== undefined ? { end_at: updates.end_at ? new Date(updates.end_at) : null } : {}),
         ...(updates.stopped_at !== undefined ? { stopped_at: updates.stopped_at ? new Date(updates.stopped_at) : null } : {}),
+        ...(updates.link !== undefined ? { link: updates.link || null } : {}),
       })
       .where(eq(schema.projects.id, id))
       .returning();
@@ -1726,10 +1729,6 @@ export async function getMemberTimeAllocation(userId: string): Promise<TimeAlloc
     const myTasks = prjIds.length > 0
       ? await db.select().from(schema.tasks).where(and(inArray(schema.tasks.project_id, prjIds), eq(schema.tasks.assignee_id, userId)))
       : [];
-    const taskIds = myTasks.map(t => t.id);
-    const myTimeEntries = taskIds.length > 0
-      ? await db.select().from(schema.timeEntries).where(inArray(schema.timeEntries.task_id, taskIds))
-      : [];
 
     return wsList.map(ws => {
       const wsProjects = allProjects.filter(p => p.workspace_id === ws.id);
@@ -1745,7 +1744,11 @@ export async function getMemberTimeAllocation(userId: string): Promise<TimeAlloc
             end_at: t.end_at ? t.end_at.toISOString() : null,
             completed_at: t.completed_at ? t.completed_at.toISOString() : null,
             allocated_minutes: minutesBetween(t.start_at, t.end_at),
-            logged_minutes: myTimeEntries.filter(te => te.task_id === t.id).reduce((sum, te) => sum + te.duration_minutes, 0),
+            // Real time spent = the task's automatic chrono (start → done/stop, or now while running).
+            // Manual time entries are no longer created anywhere in the UI.
+            logged_minutes: t.start_at && t.start_at.getTime() <= Date.now()
+              ? minutesBetween(t.start_at, t.completed_at || t.stopped_at || new Date())
+              : 0,
           }));
           return {
             id: p.id,

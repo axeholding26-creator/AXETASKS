@@ -25,7 +25,9 @@ import {
   Trash2,
   CheckCircle2,
   AlertCircle,
-  Edit2
+  Edit2,
+  Link as LinkIcon,
+  ExternalLink
 } from 'lucide-react';
 
 const KANBAN_COLUMNS: { id: TaskStatus; title: string; color: string; border: string }[] = [
@@ -49,13 +51,16 @@ export const ProjectView: React.FC<ProjectViewProps> = ({ onBackToWorkspace }) =
     setIsCreateTaskModalOpen,
     taskVersion,
     bumpTaskVersion,
-    bumpProjectVersion
+    bumpProjectVersion,
+    setCurrentProjectId
   } = useWorkspace();
 
   const [tasks, setTasks] = useState<Task[]>([]);
   const [loading, setLoading] = useState(true);
   const [viewMode, setViewMode] = useState<'kanban' | 'list'>('kanban');
   const [isEditProjectOpen, setIsEditProjectOpen] = useState(false);
+  const [isEditingLink, setIsEditingLink] = useState(false);
+  const [linkDraft, setLinkDraft] = useState('');
 
   const isWorkspaceAdmin = user?.role === 'admin' || currentWorkspace?.my_role === 'admin';
 
@@ -105,14 +110,25 @@ export const ProjectView: React.FC<ProjectViewProps> = ({ onBackToWorkspace }) =
       end_at: data.end_at,
       status: data.status as any,
     });
-    // Refresh project data to reflect name change in header
-    await loadProjectData();
+    // Re-fetch the project itself so the header shows the new name/description
+    await setCurrentProjectId(currentProject.id);
     bumpProjectVersion();
   };
 
   useEffect(() => {
     loadProjectData();
   }, [currentProject?.id, taskVersion]);
+
+  const handleSaveLink = async () => {
+    if (!currentProject) return;
+    try {
+      await api.updateProject(currentProject.id, { link: linkDraft.trim() || null });
+      setIsEditingLink(false);
+      await setCurrentProjectId(currentProject.id);
+    } catch (err: any) {
+      alert(err.message || "Erreur lors de l'enregistrement du lien.");
+    }
+  };
 
   // Handle Drag Start
   const handleDragStart = (e: React.DragEvent, taskId: string) => {
@@ -232,6 +248,59 @@ export const ProjectView: React.FC<ProjectViewProps> = ({ onBackToWorkspace }) =
           onClose={() => setIsEditProjectOpen(false)}
         />
       )}
+      {/* Project link — set by an admin at any time, shown front and center */}
+      {(currentProject.link || isWorkspaceAdmin) && (
+        <div className="flex justify-center">
+          {isEditingLink ? (
+            <form
+              onSubmit={e => { e.preventDefault(); handleSaveLink(); }}
+              className="w-full max-w-xl flex items-center gap-2 p-2 rounded bg-[#0F172A] border border-[#2563EB]/40"
+            >
+              <LinkIcon className="w-4 h-4 text-[#60A5FA] shrink-0" />
+              <input
+                autoFocus
+                type="text"
+                placeholder="https://..."
+                value={linkDraft}
+                onChange={e => setLinkDraft(e.target.value)}
+                className="flex-1 min-w-0 px-2 py-1 rounded bg-[#090D16] border border-[#1E293B] text-xs text-slate-200 focus:outline-none focus:border-[#2563EB]/50"
+              />
+              <button type="submit" className="px-3 py-1 rounded bg-[#2563EB] hover:bg-[#1D4ED8] text-white text-xs font-bold">OK</button>
+              <button type="button" onClick={() => setIsEditingLink(false)} className="px-2 py-1 rounded text-slate-400 hover:text-slate-200 text-xs">Annuler</button>
+            </form>
+          ) : currentProject.link ? (
+            <div className="flex items-center gap-2 max-w-full">
+              <a
+                href={currentProject.link}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex items-center gap-2 px-4 py-2 rounded-lg bg-[#2563EB]/15 border border-[#2563EB]/50 text-[#60A5FA] hover:bg-[#2563EB]/25 text-sm font-bold transition-colors min-w-0"
+              >
+                <ExternalLink className="w-4 h-4 shrink-0" />
+                <span className="truncate">{currentProject.link}</span>
+              </a>
+              {isWorkspaceAdmin && (
+                <button
+                  onClick={() => { setLinkDraft(currentProject.link || ''); setIsEditingLink(true); }}
+                  title="Modifier le lien"
+                  className="p-2 rounded text-slate-400 hover:text-[#60A5FA] hover:bg-[#1E293B]"
+                >
+                  <Edit2 className="w-3.5 h-3.5" />
+                </button>
+              )}
+            </div>
+          ) : (
+            <button
+              onClick={() => { setLinkDraft(''); setIsEditingLink(true); }}
+              className="flex items-center gap-2 px-4 py-2 rounded-lg border border-dashed border-[#1E293B] text-slate-400 hover:text-[#60A5FA] hover:border-[#2563EB]/50 text-xs font-bold transition-colors"
+            >
+              <LinkIcon className="w-4 h-4" />
+              <span>Ajouter le lien du projet</span>
+            </button>
+          )}
+        </div>
+      )}
+
       {/* Breadcrumb & Header */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-[#1E293B] pb-4">
         <div>

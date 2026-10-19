@@ -48,6 +48,7 @@ export const projects = pgTable('projects', {
   end_at: timestamp('end_at'),
   completed_at: timestamp('completed_at'),
   stopped_at: timestamp('stopped_at'),
+  link: text('link'),
   created_by: text('created_by').references(() => users.id, { onDelete: 'set null' }),
   created_at: timestamp('created_at').defaultNow(),
 });

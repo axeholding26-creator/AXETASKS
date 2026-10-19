@@ -64,6 +64,7 @@ export interface Project {
   end_at?: string | null;
   completed_at?: string | null;
   stopped_at?: string | null;
+  link?: string | null;
   created_by?: string | null;
   created_at: string;
   workspace?: Workspace;

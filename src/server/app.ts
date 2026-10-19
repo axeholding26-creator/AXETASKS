@@ -647,10 +647,16 @@ export function createApp() {
         return res.status(403).json({ error: 'Accès refusé à ce projet.' });
       }
       const { name, description, status, start_at, end_at, stopped_at } = req.body;
-      if ((start_at !== undefined || end_at !== undefined || stopped_at !== undefined) && !(await db.userIsWorkspaceAdmin(req.user!.id, project.workspace_id, isGlobalAdmin))) {
-        return res.status(403).json({ error: "Seul un administrateur du workspace peut modifier les dates ou le chrono d'un projet." });
+      // Only http(s) links, so a stored link can never run javascript: on click.
+      let link: string | null | undefined = req.body.link;
+      if (typeof link === 'string') {
+        link = link.trim() || null;
+        if (link && !/^https?:\/\//i.test(link)) link = `https://${link}`;
       }
-      const updated = await db.updateProject(req.params.id, { name, description, status, start_at, end_at, stopped_at });
+      if ((start_at !== undefined || end_at !== undefined || stopped_at !== undefined || link !== undefined) && !(await db.userIsWorkspaceAdmin(req.user!.id, project.workspace_id, isGlobalAdmin))) {
+        return res.status(403).json({ error: "Seul un administrateur du workspace peut modifier les dates, le chrono ou le lien d'un projet." });
+      }
+      const updated = await db.updateProject(req.params.id, { name, description, status, start_at, end_at, stopped_at, link });
       res.json(updated);
     } catch (err: any) {
       res.status(500).json({ error: err.message || 'Erreur lors de la modification du projet.' });

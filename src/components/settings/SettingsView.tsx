@@ -112,7 +112,7 @@ export const SettingsView: React.FC = () => {
   // Members state
   const [members, setMembers] = useState<WorkspaceMember[]>([]);
   const [loadingMembers, setLoadingMembers] = useState(false);
-  const [inviteEmail, setInviteEmail] = useState('');
+  const [inviteSearch, setInviteSearch] = useState('');
   const [inviteRole, setInviteRole] = useState<WorkspaceRole>('member');
   const [inviteError, setInviteError] = useState('');
   const [inviteSuccess, setInviteSuccess] = useState('');
@@ -331,16 +331,14 @@ export const SettingsView: React.FC = () => {
   };
 
   // Invite member to workspace
-  const handleInviteMember = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleInviteMember = async (target: UserType) => {
     setInviteError('');
     setInviteSuccess('');
-    if (!inviteEmail.trim() || !currentWorkspace) return;
+    if (!currentWorkspace) return;
 
     try {
-      await api.addWorkspaceMember(currentWorkspace.id, inviteEmail.trim(), inviteRole);
-      flash(setInviteSuccess, `Membre ${inviteEmail} ajouté avec succès !`);
-      setInviteEmail('');
+      await api.addWorkspaceMember(currentWorkspace.id, target.id, inviteRole);
+      flash(setInviteSuccess, `${target.name} ajouté à l'espace !`);
       loadData();
     } catch (err: any) {
       flash(setInviteError, err.message || "Erreur lors de l'ajout du membre.");
@@ -586,6 +584,13 @@ export const SettingsView: React.FC = () => {
   const filteredUsers = allUsers.filter(u => 
     u.name.toLowerCase().includes(userSearch.toLowerCase()) ||
     u.email.toLowerCase().includes(userSearch.toLowerCase())
+  );
+
+  const memberIds = new Set(members.map(m => m.user_id));
+  const invitableUsers = allUsers.filter(u =>
+    !memberIds.has(u.id) &&
+    (u.name.toLowerCase().includes(inviteSearch.toLowerCase()) ||
+      u.email.toLowerCase().includes(inviteSearch.toLowerCase()))
   );
 
   const noWorkspaceNotice = (
@@ -1220,16 +1225,14 @@ export const SettingsView: React.FC = () => {
                 L'utilisateur aura accès à tous les projets et tâches de <strong>{currentWorkspace.name}</strong>.
               </p>
 
-              <form onSubmit={handleInviteMember} className="flex flex-col sm:flex-row gap-2.5 pt-1">
+              <div className="flex flex-col sm:flex-row gap-2.5 pt-1">
                 <input
-                  type="email"
-                  required
-                  placeholder="adresse.email@societe.com"
-                  value={inviteEmail}
-                  onChange={e => setInviteEmail(e.target.value)}
+                  type="text"
+                  placeholder="Filtrer par nom ou email..."
+                  value={inviteSearch}
+                  onChange={e => setInviteSearch(e.target.value)}
                   className="flex-1 px-3 py-1.5 rounded bg-[#090D16] border border-[#1E293B] text-xs text-slate-200 placeholder-slate-500 focus:outline-none focus:border-[#2563EB]/50"
                 />
-
                 <select
                   value={inviteRole}
                   onChange={e => setInviteRole(e.target.value as WorkspaceRole)}
@@ -1238,14 +1241,30 @@ export const SettingsView: React.FC = () => {
                   <option value="member">Membre standard</option>
                   <option value="admin">Administrateur d'espace</option>
                 </select>
+              </div>
 
-                <button
-                  type="submit"
-                  className="px-4 py-1.5 rounded bg-[#2563EB] hover:bg-[#1D4ED8] text-white font-bold text-xs shadow-sm shadow-blue-500/25 transition-all whitespace-nowrap"
-                >
-                  Ajouter à l'espace
-                </button>
-              </form>
+              <div className="max-h-72 overflow-y-auto rounded border border-[#1E293B] divide-y divide-[#1E293B]">
+                {invitableUsers.length === 0 ? (
+                  <p className="p-4 text-center text-xs text-slate-500">Tous les utilisateurs sont déjà membres de cet espace.</p>
+                ) : invitableUsers.map(u => (
+                  <div key={u.id} className="p-2.5 flex items-center justify-between gap-3">
+                    <div className="flex items-center gap-3 min-w-0">
+                      <Avatar user={u} size="sm" />
+                      <div className="min-w-0">
+                        <p className="text-xs font-bold text-slate-100 truncate">{u.name}</p>
+                        <p className="text-[11px] text-slate-400 font-mono truncate">{u.email}</p>
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => handleInviteMember(u)}
+                      className="px-3 py-1.5 rounded bg-[#2563EB] hover:bg-[#1D4ED8] text-white font-bold text-xs shadow-sm shadow-blue-500/25 transition-all whitespace-nowrap"
+                    >
+                      Ajouter à l'espace
+                    </button>
+                  </div>
+                ))}
+              </div>
 
               {inviteError && (
                 <p className="text-xs text-rose-400 mt-1 font-medium">{inviteError}</p>
