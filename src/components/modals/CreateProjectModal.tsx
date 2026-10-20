@@ -18,6 +18,7 @@ export const CreateProjectModal: React.FC = () => {
 
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
+  const [link, setLink] = useState('');
   const [startDate, setStartDate] = useState('');
   const [startTime, setStartTime] = useState('09:00');
   const [endDate, setEndDate] = useState('');
@@ -40,6 +41,7 @@ export const CreateProjectModal: React.FC = () => {
       const newProject = await api.createProject(currentWorkspace.id, {
         name: name.trim(),
         description: description.trim() || undefined,
+        link: link.trim() || undefined,
         start_at: combineDateAndTime(startDate, startTime),
         end_at: combineDateAndTime(endDate, endTime),
       });
@@ -54,6 +56,7 @@ export const CreateProjectModal: React.FC = () => {
       });
       setName('');
       setDescription('');
+      setLink('');
       setStartDate('');
       setEndDate('');
     } catch (err: any) {
@@ -119,6 +122,20 @@ export const CreateProjectModal: React.FC = () => {
               onChange={e => setDescription(e.target.value)}
               placeholder="Objectifs et cadre du projet..."
               className="w-full p-2.5 rounded bg-[#090D16] border border-[#1E293B] text-xs text-slate-200 placeholder-slate-500 focus:outline-none focus:border-[#2563EB]/60 leading-relaxed"
+            />
+          </div>
+
+          <div>
+            <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">
+              Lien du projet (facultatif)
+            </label>
+            <input
+              type="text"
+              inputMode="url"
+              value={link}
+              onChange={e => setLink(e.target.value)}
+              placeholder="https://..."
+              className="w-full px-3 py-2 rounded bg-[#090D16] border border-[#1E293B] text-xs text-slate-200 placeholder-slate-500 focus:outline-none focus:border-[#2563EB]/60"
             />
           </div>
 

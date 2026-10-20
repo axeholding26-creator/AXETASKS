@@ -105,6 +105,114 @@ async function authMiddleware(req: AuthenticatedRequest, res: Response, next: Ne
   }
 }
 
+// ==================== ACTIVITY LOG ====================
+// Every successful mutating /api call is recorded in activity_logs, so global
+// admins get a complete history without each route having to opt in. Routes
+// can enrich an entry with res.locals.audit = { label, before }.
+
+const AUDIT_ACTIONS: [string, string, string][] = [
+  ['POST', '/api/auth/login', 'Connexion'],
+  ['POST', '/api/auth/signup', 'Inscription'],
+  ['PUT', '/api/auth/profile', 'Profil modifié'],
+  ['PUT', '/api/auth/password', 'Mot de passe changé'],
+  ['POST', '/api/users', 'Utilisateur créé'],
+  ['PATCH', '/api/users/:id/role', 'Rôle global modifié'],
+  ['DELETE', '/api/users/:id', 'Utilisateur supprimé'],
+  ['PATCH', '/api/users/:id/function', "Fonction d'un utilisateur modifiée"],
+  ['POST', '/api/job-functions', 'Fonction créée'],
+  ['DELETE', '/api/job-functions/:id', 'Fonction supprimée'],
+  ['POST', '/api/workspaces', 'Espace créé'],
+  ['PUT', '/api/workspaces/:id', 'Espace modifié'],
+  ['DELETE', '/api/workspaces/:id', 'Espace supprimé'],
+  ['POST', '/api/workspaces/:id/members', "Membre ajouté à l'espace"],
+  ['DELETE', '/api/workspaces/:id/members/:userId', "Membre retiré de l'espace"],
+  ['PUT', '/api/workspace-members/:id', "Rôle dans l'espace modifié"],
+  ['DELETE', '/api/workspace-members/:id', "Membre retiré de l'espace"],
+  ['POST', '/api/workspaces/:id/projects', 'Projet créé'],
+  ['PUT', '/api/projects/:id', 'Projet modifié'],
+  ['DELETE', '/api/projects/:id', 'Projet supprimé'],
+  ['POST', '/api/projects/:id/members', 'Membre ajouté au projet'],
+  ['DELETE', '/api/projects/:id/members/:userId', 'Membre retiré du projet'],
+  ['POST', '/api/workspaces/:id/tags', 'Tag créé'],
+  ['DELETE', '/api/tags/:id', 'Tag supprimé'],
+  ['POST', '/api/projects/:id/tasks', 'Tâche créée'],
+  ['PATCH', '/api/tasks/:id', 'Tâche modifiée'],
+  ['DELETE', '/api/tasks/:id', 'Tâche supprimée'],
+  ['POST', '/api/tasks/:id/subtasks', 'Sous-tâche ajoutée'],
+  ['PATCH', '/api/subtasks/:id', 'Sous-tâche modifiée'],
+  ['DELETE', '/api/subtasks/:id', 'Sous-tâche supprimée'],
+  ['POST', '/api/tasks/:id/comments', 'Commentaire ajouté'],
+  ['DELETE', '/api/comments/:id', 'Commentaire supprimé'],
+  ['POST', '/api/tasks/:id/attachments', 'Pièce jointe ajoutée'],
+  ['DELETE', '/api/attachments/:id', 'Pièce jointe supprimée'],
+  ['POST', '/api/tasks/:id/time-entries', 'Temps saisi'],
+  ['DELETE', '/api/time-entries/:id', 'Saisie de temps supprimée'],
+  ['POST', '/api/conversations', 'Conversation créée'],
+  ['POST', '/api/conversations/:id/messages', 'Message envoyé'],
+  ['POST', '/api/announcements', 'Annonce publiée'],
+  ['DELETE', '/api/announcements/:id', 'Annonce supprimée'],
+];
+const AUDIT_ROUTES = AUDIT_ACTIONS.map(([method, pattern, label]) => ({
+  method,
+  re: new RegExp(`^${pattern.replace(/:[^/]+/g, '[^/]+')}$`),
+  label,
+}));
+// Pure UI bookkeeping, not worth an audit entry.
+const AUDIT_SKIP = [/^\/api\/push\//, /^\/api\/notifications/, /^\/api\/conversations\/[^/]+\/read$/, /^\/api\/tasks\/reorder$/];
+const AUDIT_SECRET_KEYS = new Set(['password', 'current_password', 'new_password', 'currentPassword', 'newPassword', 'token']);
+
+function auditSanitize(value: unknown, depth = 0): unknown {
+  if (typeof value === 'string') {
+    if (value.startsWith('data:')) return '[fichier]';
+    return value.length > 500 ? `${value.slice(0, 500)}…` : value;
+  }
+  if (Array.isArray(value)) return value.slice(0, 50).map(v => auditSanitize(v, depth + 1));
+  if (value && typeof value === 'object' && depth < 3) {
+    return Object.fromEntries(Object.entries(value)
+      .filter(([k]) => !AUDIT_SECRET_KEYS.has(k))
+      .map(([k, v]) => [k, auditSanitize(v, depth + 1)]));
+  }
+  return value;
+}
+
+function auditMiddleware(req: AuthenticatedRequest, res: Response, next: NextFunction) {
+  const path = req.originalUrl.split('?')[0];
+  if (req.method === 'GET' || req.method === 'OPTIONS' || AUDIT_SKIP.some(re => re.test(path))) return next();
+
+  const send = res.json.bind(res);
+  res.json = (body: any) => {
+    if (res.statusCode >= 400) return send(body);
+    const actor = req.user || body?.user; // login/signup: no req.user yet
+    const route = AUDIT_ROUTES.find(r => r.method === req.method && r.re.test(path));
+    const audit = res.locals.audit || {};
+    // Private messages: record that one was sent, never its content.
+    const changes = path.startsWith('/api/conversations') ? undefined : auditSanitize(req.body);
+    const label = audit.label ?? req.body?.title ?? req.body?.name ?? body?.title ?? body?.name ?? body?.user?.name;
+    // Written before the response goes out: on Vercel the function may be
+    // frozen as soon as the response is sent.
+    db.logActivity({
+      user_id: actor?.id,
+      user_name: actor?.name,
+      action: route?.label || `${req.method} ${path}`,
+      path: `${req.method} ${path}`,
+      entity_label: typeof label === 'string' ? label : null,
+      details: { changes, before: audit.before ? auditSanitize(audit.before) : undefined },
+    })
+      .catch(err => console.error('Failed to write activity log:', err))
+      .finally(() => send(body));
+    return res;
+  };
+  next();
+}
+
+// Only http(s) links, so a stored link can never run javascript: on click.
+function normalizeLink(link: unknown): string | null | undefined {
+  if (typeof link !== 'string') return link as null | undefined;
+  const trimmed = link.trim();
+  if (!trimmed) return null;
+  return /^https?:\/\//i.test(trimmed) ? trimmed : `https://${trimmed}`;
+}
+
 export function createApp() {
   const app = express();
 
@@ -140,6 +248,8 @@ export function createApp() {
     const allowed = !origin || sameOrigin || extraAllowedOrigins.includes(origin);
     callback(null, { origin: allowed, credentials: true });
   }));
+
+  app.use('/api', auditMiddleware);
 
   // --- API Routes ---
 
@@ -325,6 +435,7 @@ export function createApp() {
         return res.status(404).json({ error: 'Profil utilisateur introuvable.' });
       }
 
+      res.locals.audit = { label: targetUser.name };
       await db.deleteUser(targetUserId);
       res.json({ success: true, message: `Profil utilisateur ${targetUser.name} supprimé avec succès.` });
     } catch (err: any) {
@@ -424,6 +535,11 @@ export function createApp() {
       if (!canAdmin) {
         return res.status(403).json({ error: 'Accès refusé : vous devez être administrateur du workspace.' });
       }
+      const ws = await db.getWorkspaceById(wsId);
+      res.locals.audit = {
+        label: ws?.name,
+        before: ws ? Object.fromEntries(Object.keys(req.body || {}).map(k => [k, (ws as any)[k]])) : undefined,
+      };
       const { name, color, icon, photo_url } = req.body;
       const updated = await db.updateWorkspace(wsId, { name, color, icon, photo_url });
       if (!updated) return res.status(404).json({ error: 'Workspace introuvable.' });
@@ -442,6 +558,7 @@ export function createApp() {
       if (!canAdmin) {
         return res.status(403).json({ error: 'Accès refusé : vous devez être administrateur du workspace.' });
       }
+      res.locals.audit = { label: (await db.getWorkspaceById(wsId))?.name };
       await db.deleteWorkspace(wsId);
       res.json({ success: true, message: 'Workspace supprimé avec succès.' });
     } catch (err: any) {
@@ -613,7 +730,7 @@ export function createApp() {
       if (!name) {
         return res.status(400).json({ error: 'Le nom du projet est requis.' });
       }
-      const project = await db.createProject(wsId, name, description, start_at, end_at, status, req.user!.id);
+      const project = await db.createProject(wsId, name, description, start_at, end_at, status, req.user!.id, normalizeLink(req.body.link) || undefined);
       res.status(201).json(project);
     } catch (err: any) {
       res.status(500).json({ error: err.message || 'Erreur lors de la création du projet.' });
@@ -647,15 +764,14 @@ export function createApp() {
         return res.status(403).json({ error: 'Accès refusé à ce projet.' });
       }
       const { name, description, status, start_at, end_at, stopped_at } = req.body;
-      // Only http(s) links, so a stored link can never run javascript: on click.
-      let link: string | null | undefined = req.body.link;
-      if (typeof link === 'string') {
-        link = link.trim() || null;
-        if (link && !/^https?:\/\//i.test(link)) link = `https://${link}`;
-      }
+      const link = normalizeLink(req.body.link);
       if ((start_at !== undefined || end_at !== undefined || stopped_at !== undefined || link !== undefined) && !(await db.userIsWorkspaceAdmin(req.user!.id, project.workspace_id, isGlobalAdmin))) {
         return res.status(403).json({ error: "Seul un administrateur du workspace peut modifier les dates, le chrono ou le lien d'un projet." });
       }
+      res.locals.audit = {
+        label: project.name,
+        before: Object.fromEntries(Object.keys(req.body || {}).map(k => [k, (project as any)[k]])),
+      };
       const updated = await db.updateProject(req.params.id, { name, description, status, start_at, end_at, stopped_at, link });
       res.json(updated);
     } catch (err: any) {
@@ -673,6 +789,7 @@ export function createApp() {
       if (!canAdmin) {
         return res.status(403).json({ error: 'Seul un administrateur du workspace peut supprimer un projet.' });
       }
+      res.locals.audit = { label: project.name };
       await db.deleteProject(req.params.id);
       res.json({ success: true });
     } catch (err: any) {
@@ -893,6 +1010,10 @@ export function createApp() {
         }
       }
 
+      res.locals.audit = {
+        label: task.title,
+        before: Object.fromEntries(Object.keys(req.body || {}).map(k => [k, k === 'tag_ids' ? task.tags?.map(t => t.name) : (task as any)[k]])),
+      };
       const { title, description, status, priority, assignee_id, start_at, end_at, stopped_at, estimated_minutes, tag_ids, position } = req.body;
       const updated = await db.updateTask(req.params.id, {
         title,
@@ -986,6 +1107,7 @@ export function createApp() {
           return res.status(403).json({ error: 'Accès refusé à cette tâche.' });
         }
       }
+      res.locals.audit = { label: task.title };
       await db.deleteTask(req.params.id);
       res.json({ success: true });
     } catch (err: any) {
@@ -1300,6 +1422,24 @@ export function createApp() {
       res.json(announcements);
     } catch (err: any) {
       res.status(500).json({ error: err.message || 'Erreur lors de la récupération des annonces.' });
+    }
+  });
+
+  // Activity log: global admins only
+  app.get('/api/activity', authMiddleware, async (req: AuthenticatedRequest, res) => {
+    if (req.user!.role !== 'admin') {
+      return res.status(403).json({ error: 'Action réservée aux administrateurs.' });
+    }
+    try {
+      const logs = await db.getActivityLogs({
+        q: typeof req.query.q === 'string' ? req.query.q : undefined,
+        userId: typeof req.query.user_id === 'string' ? req.query.user_id : undefined,
+        limit: 100,
+        offset: Math.max(0, Number(req.query.offset) || 0),
+      });
+      res.json(logs);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message || "Erreur lors de la récupération de l'historique." });
     }
   });
 

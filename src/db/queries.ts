@@ -28,7 +28,8 @@ import {
   Announcement,
   TimeAllocationTask,
   TimeAllocationProject,
-  TimeAllocationWorkspace
+  TimeAllocationWorkspace,
+  ActivityLog
 } from '../types.ts';
 
 function generateId(prefix: string = ''): string {
@@ -782,7 +783,8 @@ export async function createProject(
   start_at?: string,
   end_at?: string,
   status: string = 'en_cours',
-  createdBy?: string
+  createdBy?: string,
+  link?: string
 ): Promise<Project> {
   try {
     const id = generateId('prj');
@@ -795,6 +797,7 @@ export async function createProject(
       end_at: end_at ? new Date(end_at) : undefined,
       status,
       created_by: createdBy,
+      link,
     }).returning();
 
     return {
@@ -807,6 +810,7 @@ export async function createProject(
       end_at: created.end_at ? created.end_at.toISOString() : null,
       completed_at: null,
       stopped_at: null,
+      link: created.link,
       created_by: created.created_by,
       created_at: created.created_at ? created.created_at.toISOString() : new Date().toISOString(),
       tasks_count: 0,
@@ -2461,4 +2465,44 @@ export async function createDueDateNotifications(): Promise<{ created: number }>
     console.error('Failed to create due date notifications:', error);
     throw new Error('Database query failed. Please try again later.', { cause: error });
   }
+}
+
+// ==================== ACTIVITY LOG ====================
+
+export async function logActivity(data: {
+  user_id?: string | null;
+  user_name?: string | null;
+  action: string;
+  path: string;
+  entity_label?: string | null;
+  details?: unknown;
+}): Promise<void> {
+  await db.insert(schema.activityLogs).values({
+    id: generateId('act'),
+    user_id: data.user_id || null,
+    user_name: data.user_name || null,
+    action: data.action,
+    path: data.path,
+    entity_label: data.entity_label || null,
+    details: data.details ?? null,
+  });
+}
+
+export async function getActivityLogs(opts: { q?: string; userId?: string; limit: number; offset: number }): Promise<ActivityLog[]> {
+  const conds = [];
+  if (opts.userId) conds.push(eq(schema.activityLogs.user_id, opts.userId));
+  if (opts.q) {
+    const like = `%${opts.q}%`;
+    conds.push(sql`(${schema.activityLogs.action} ILIKE ${like} OR ${schema.activityLogs.entity_label} ILIKE ${like} OR ${schema.activityLogs.user_name} ILIKE ${like})`);
+  }
+  const rows = await db.select().from(schema.activityLogs)
+    .where(conds.length ? and(...conds) : undefined)
+    .orderBy(desc(schema.activityLogs.created_at))
+    .limit(opts.limit)
+    .offset(opts.offset);
+  return rows.map(r => ({
+    ...r,
+    details: r.details as ActivityLog['details'],
+    created_at: r.created_at ? r.created_at.toISOString() : new Date().toISOString(),
+  }));
 }

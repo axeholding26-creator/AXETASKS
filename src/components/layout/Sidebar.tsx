@@ -18,10 +18,11 @@ import {
   Sparkles,
   Kanban,
   MessageSquare,
-  Megaphone
+  Megaphone,
+  ScrollText
 } from 'lucide-react';
 
-type SidebarView = 'dashboard' | 'workspaces' | 'workspace_detail' | 'project_detail' | 'time_tracking' | 'messages' | 'announcements' | 'settings';
+type SidebarView = 'dashboard' | 'workspaces' | 'workspace_detail' | 'project_detail' | 'time_tracking' | 'messages' | 'announcements' | 'activity' | 'settings';
 
 interface SidebarProps {
   currentView: SidebarView;
@@ -255,6 +256,22 @@ export const Sidebar: React.FC<SidebarProps> = ({ currentView, onNavigate, isOpe
               <span>Annonces</span>
             </div>
           </button>
+
+          {isGlobalAdmin && (
+            <button
+              onClick={() => onNavigate('activity')}
+              className={`w-full flex items-center justify-between px-2.5 py-1.5 rounded text-xs transition-all ${
+                currentView === 'activity'
+                  ? 'bg-[#2563EB]/15 text-[#60A5FA] font-bold border border-[#2563EB]/40 shadow-sm'
+                  : 'text-slate-300 hover:bg-[#1E293B] hover:text-slate-100'
+              }`}
+            >
+              <div className="flex items-center gap-2">
+                <ScrollText className="w-3.5 h-3.5 text-[#60A5FA]" />
+                <span>Historique</span>
+              </div>
+            </button>
+          )}
         </div>
 
         <div className="h-px bg-[#1E293B] mx-2 shrink-0" />

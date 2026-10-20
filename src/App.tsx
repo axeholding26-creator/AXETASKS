@@ -12,6 +12,7 @@ import { ProjectView } from './components/projects/ProjectView';
 import { TimeTrackingView } from './components/time/TimeTrackingView';
 import { MessagesView } from './components/messages/MessagesView';
 import { AnnouncementsView } from './components/announcements/AnnouncementsView';
+import { ActivityLogView } from './components/activity/ActivityLogView';
 import { SettingsView } from './components/settings/SettingsView';
 import { TaskDetailDrawer } from './components/tasks/TaskDetailDrawer';
 import { CreateTaskModal } from './components/modals/CreateTaskModal';
@@ -27,6 +28,7 @@ type NavigationTab =
   | 'time_tracking'
   | 'messages'
   | 'announcements'
+  | 'activity'
   | 'settings';
 
 function MainAppLayout() {
@@ -123,6 +125,8 @@ function MainAppLayout() {
         {currentView === 'messages' && <MessagesView />}
 
         {currentView === 'announcements' && <AnnouncementsView />}
+
+        {currentView === 'activity' && user?.role === 'admin' && <ActivityLogView />}
 
         {currentView === 'settings' && <SettingsView />}
       </main>

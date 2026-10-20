@@ -17,7 +17,8 @@ import {
   AppNotification,
   JobFunction,
   TimeAllocationWorkspace,
-  Announcement
+  Announcement,
+  ActivityLog
 } from '../types';
 
 const TOKEN_KEY = 'axetask_jwt_token';
@@ -186,7 +187,7 @@ export const api = {
   getProject: (projectId: string) =>
     fetchWithAuth<Project>(`/api/projects/${projectId}`),
 
-  createProject: (workspaceId: string, data: { name: string; description?: string; start_at?: string; end_at?: string; status?: string }) =>
+  createProject: (workspaceId: string, data: { name: string; description?: string; start_at?: string; end_at?: string; status?: string; link?: string }) =>
     fetchWithAuth<Project>(`/api/workspaces/${workspaceId}/projects`, {
       method: 'POST',
       body: JSON.stringify(data),
@@ -369,6 +370,16 @@ export const api = {
     fetchWithAuth<{ success: boolean }>(`/api/conversations/${conversationId}/read`, {
       method: 'POST',
     }),
+
+  // Activity log (global admins only)
+  getActivityLogs: (params: { q?: string; userId?: string; offset?: number } = {}) => {
+    const qs = new URLSearchParams();
+    if (params.q?.trim()) qs.set('q', params.q.trim());
+    if (params.userId) qs.set('user_id', params.userId);
+    if (params.offset) qs.set('offset', String(params.offset));
+    const s = qs.toString();
+    return fetchWithAuth<ActivityLog[]>(`/api/activity${s ? `?${s}` : ''}`);
+  },
 
   // Announcements
   getAnnouncements: (search?: string) => {

@@ -1,5 +1,5 @@
 import { relations } from 'drizzle-orm';
-import { pgTable, text, integer, boolean, timestamp } from 'drizzle-orm/pg-core';
+import { pgTable, text, integer, boolean, timestamp, jsonb } from 'drizzle-orm/pg-core';
 
 export const jobFunctions = pgTable('job_functions', {
   id: text('id').primaryKey(),
@@ -158,6 +158,19 @@ export const announcements = pgTable('announcements', {
   title: text('title').notNull(),
   content: text('content').notNull(),
   created_by: text('created_by').references(() => users.id),
+  created_at: timestamp('created_at').defaultNow(),
+});
+
+// Audit trail: one row per successful mutating API call (see auditMiddleware
+// in src/server/app.ts). user_name is copied so entries survive user deletion.
+export const activityLogs = pgTable('activity_logs', {
+  id: text('id').primaryKey(),
+  user_id: text('user_id').references(() => users.id, { onDelete: 'set null' }),
+  user_name: text('user_name'),
+  action: text('action').notNull(),
+  path: text('path').notNull(),
+  entity_label: text('entity_label'),
+  details: jsonb('details'),
   created_at: timestamp('created_at').defaultNow(),
 });
 
