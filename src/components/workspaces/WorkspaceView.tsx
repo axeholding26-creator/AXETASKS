@@ -58,6 +58,13 @@ export const WorkspaceView: React.FC<WorkspaceViewProps> = ({
     const file = e.target.files?.[0];
     e.target.value = '';
     if (!file || !currentWorkspace) return;
+    const ok = await confirm({
+      title: 'Photo de l\'espace',
+      message: `Remplacer la photo de l'espace par "${file.name}" ?`,
+      confirmLabel: 'Valider',
+      variant: 'warning',
+    });
+    if (!ok) return;
     try {
       setIsUploadingPhoto(true);
       const dataUrl = await resizeImageToDataUrl(file, 500, 0.85);

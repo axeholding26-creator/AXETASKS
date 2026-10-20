@@ -54,6 +54,8 @@ export const TaskDetailDrawer: React.FC = () => {
   const [startTime, setStartTime] = useState<string>('09:00');
   const [endDate, setEndDate] = useState<string>('');
   const [endTime, setEndTime] = useState<string>('18:00');
+  const [tagIds, setTagIds] = useState<string[]>([]);
+  const [saving, setSaving] = useState(false);
 
   // Subtasks & Comments & Attachments & Time Logging inputs
   const [newSubtaskTitle, setNewSubtaskTitle] = useState('');
@@ -71,23 +73,47 @@ export const TaskDetailDrawer: React.FC = () => {
   // Active Tab
   const [activeTab, setActiveTab] = useState<'subtasks' | 'comments' | 'attachments'>('subtasks');
 
-  const loadTask = async () => {
+  // Form values as they are saved on the server — edits stay local until "Valider".
+  const formOf = (t: Task) => {
+    const s = splitISOToDateAndTime(t.start_at);
+    const en = splitISOToDateAndTime(t.end_at);
+    return {
+      title: t.title,
+      description: t.description || '',
+      status: t.status,
+      priority: t.priority,
+      assigneeId: t.assignee_id || '',
+      startDate: s.date,
+      startTime: s.time || '09:00',
+      endDate: en.date,
+      endTime: en.time || '18:00',
+      tagIds: (t.tags?.map(x => x.id) || []).sort(),
+    };
+  };
+
+  const resetForm = (t: Task) => {
+    const f = formOf(t);
+    setTitle(f.title);
+    setDescription(f.description);
+    setStatus(f.status);
+    setPriority(f.priority);
+    setAssigneeId(f.assigneeId);
+    setStartDate(f.startDate);
+    setStartTime(f.startTime);
+    setEndDate(f.endDate);
+    setEndTime(f.endTime);
+    setTagIds(f.tagIds);
+  };
+
+  // `resetFields` only on first load: refreshing after a subtask/comment
+  // must not wipe edits the user hasn't validated yet.
+  const loadTask = async (resetFields = false) => {
     if (!selectedTaskId) return;
     try {
       setLoading(true);
       const data = await api.getTask(selectedTaskId);
       setTask(data);
-      setTitle(data.title);
-      setDescription(data.description || '');
-      setStatus(data.status);
-      setPriority(data.priority);
-      setAssigneeId(data.assignee_id || '');
-      const s = splitISOToDateAndTime(data.start_at);
-      const en = splitISOToDateAndTime(data.end_at);
-      setStartDate(s.date);
-      setStartTime(s.time || '09:00');
-      setEndDate(en.date);
-      setEndTime(en.time || '18:00');
+      if (resetFields) resetForm(data);
 
       // Assignee list intentionally includes every platform user, not just
       // existing workspace members — assigning someone new auto-grants them
@@ -106,18 +132,55 @@ export const TaskDetailDrawer: React.FC = () => {
   };
 
   useEffect(() => {
-    loadTask();
+    loadTask(true);
   }, [selectedTaskId]);
 
-  const handleUpdateField = async (updates: Partial<Task>) => {
-    if (!task) return;
+  const saved = task ? formOf(task) : null;
+  const current = {
+    title, description, status, priority, assigneeId,
+    startDate, startTime, endDate, endTime,
+    tagIds: [...tagIds].sort(),
+  };
+  const isDirty = !!saved && JSON.stringify(saved) !== JSON.stringify(current);
+
+  const handleSaveEdits = async () => {
+    if (!task || !saved) return;
+    const updates: Record<string, unknown> = {};
+    if (current.title !== saved.title) updates.title = current.title;
+    if (current.description !== saved.description) updates.description = current.description;
+    if (current.status !== saved.status) updates.status = current.status;
+    if (current.priority !== saved.priority) updates.priority = current.priority;
+    if (current.assigneeId !== saved.assigneeId) updates.assignee_id = current.assigneeId || null;
+    if (current.startDate !== saved.startDate || current.startTime !== saved.startTime)
+      updates.start_at = combineDateAndTime(startDate, startTime) || null;
+    if (current.endDate !== saved.endDate || current.endTime !== saved.endTime)
+      updates.end_at = combineDateAndTime(endDate, endTime) || null;
+    if (current.tagIds.join() !== saved.tagIds.join()) updates.tag_ids = tagIds;
     try {
-      const updated = await api.updateTask(task.id, updates);
-      setTask(updated);
+      setSaving(true);
+      await api.updateTask(task.id, updates as Partial<Task>);
       bumpTaskVersion();
+      const fresh = await api.getTask(task.id);
+      setTask(fresh);
+      resetForm(fresh);
     } catch (err) {
       console.error(err);
+    } finally {
+      setSaving(false);
     }
+  };
+
+  const handleClose = async () => {
+    if (isDirty) {
+      const ok = await confirm({
+        title: 'Modifications non validées',
+        message: 'Vos modifications ne sont pas validées et seront perdues.\n\nFermer quand même ?',
+        confirmLabel: 'Fermer sans valider',
+        variant: 'warning',
+      });
+      if (!ok) return;
+    }
+    setSelectedTaskId(null);
   };
 
   // Subtasks
@@ -153,6 +216,13 @@ export const TaskDetailDrawer: React.FC = () => {
   };
 
   const handleDeleteSubtask = async (subtaskId: string) => {
+    const ok = await confirm({
+      title: 'Supprimer la sous-tâche',
+      message: 'Voulez-vous vraiment supprimer la sous-tâche ?',
+      confirmLabel: 'Supprimer',
+      variant: 'danger',
+    });
+    if (!ok) return;
     try {
       await api.deleteSubtask(subtaskId);
       loadTask();
@@ -177,6 +247,13 @@ export const TaskDetailDrawer: React.FC = () => {
   };
 
   const handleDeleteComment = async (commentId: string) => {
+    const ok = await confirm({
+      title: 'Supprimer le commentaire',
+      message: 'Voulez-vous vraiment supprimer le commentaire ?',
+      confirmLabel: 'Supprimer',
+      variant: 'danger',
+    });
+    if (!ok) return;
     try {
       await api.deleteComment(commentId);
       loadTask();
@@ -232,6 +309,13 @@ export const TaskDetailDrawer: React.FC = () => {
   };
 
   const handleDeleteAttachment = async (attachmentId: string) => {
+    const ok = await confirm({
+      title: 'Supprimer la pièce jointe',
+      message: 'Voulez-vous vraiment supprimer la pièce jointe ?',
+      confirmLabel: 'Supprimer',
+      variant: 'danger',
+    });
+    if (!ok) return;
     try {
       await api.deleteAttachment(attachmentId);
       loadTask();
@@ -242,15 +326,8 @@ export const TaskDetailDrawer: React.FC = () => {
   };
 
   // Tags toggle
-  const handleToggleTag = async (tagId: string) => {
-    if (!task) return;
-    const currentTagIds = task.tags?.map(t => t.id) || [];
-    const newTagIds = currentTagIds.includes(tagId)
-      ? currentTagIds.filter(id => id !== tagId)
-      : [...currentTagIds, tagId];
-
-    await handleUpdateField({ tag_ids: newTagIds } as any);
-    loadTask();
+  const handleToggleTag = (tagId: string) => {
+    setTagIds(ids => ids.includes(tagId) ? ids.filter(id => id !== tagId) : [...ids, tagId]);
   };
 
   const handleDeleteTask = async () => {
@@ -285,7 +362,7 @@ export const TaskDetailDrawer: React.FC = () => {
         {/* Header */}
         <div className="p-3.5 border-b border-[#1E293B] bg-[#0B1120] flex items-center gap-3">
           <button
-            onClick={() => setSelectedTaskId(null)}
+            onClick={handleClose}
             title="Retour"
             aria-label="Retour"
             className="flex items-center justify-center w-8 h-8 rounded bg-[#1E293B] hover:bg-[#334155] border border-[#334155] text-slate-200 hover:text-white transition-colors shrink-0"
@@ -320,7 +397,7 @@ export const TaskDetailDrawer: React.FC = () => {
             </button>
 
             <button
-              onClick={() => setSelectedTaskId(null)}
+              onClick={handleClose}
               className="p-1 rounded text-slate-400 hover:text-slate-200 hover:bg-[#1E293B] transition-colors"
             >
               <X className="w-3.5 h-3.5" />
@@ -345,7 +422,6 @@ export const TaskDetailDrawer: React.FC = () => {
                   type="text"
                   value={title}
                   onChange={e => setTitle(e.target.value)}
-                  onBlur={() => handleUpdateField({ title })}
                   className="w-full text-lg font-bold bg-transparent text-slate-100 placeholder-slate-500 focus:outline-none focus:bg-[#0F172A] p-1.5 rounded transition-colors border border-transparent focus:border-[#2563EB]/50"
                   placeholder="Titre de la tâche..."
                 />
@@ -363,7 +439,6 @@ export const TaskDetailDrawer: React.FC = () => {
                     onChange={e => {
                       const val = e.target.value as TaskStatus;
                       setStatus(val);
-                      handleUpdateField({ status: val });
                     }}
                     className="w-full px-2 py-1 rounded bg-[#090D16] border border-[#1E293B] text-xs font-semibold text-slate-200 focus:outline-none focus:border-[#2563EB]/60 cursor-pointer"
                   >
@@ -385,7 +460,6 @@ export const TaskDetailDrawer: React.FC = () => {
                     onChange={e => {
                       const val = e.target.value as TaskPriority;
                       setPriority(val);
-                      handleUpdateField({ priority: val });
                     }}
                     className="w-full px-2 py-1 rounded bg-[#090D16] border border-[#1E293B] text-xs font-semibold text-slate-200 focus:outline-none focus:border-[#2563EB]/60 cursor-pointer"
                   >
@@ -406,7 +480,6 @@ export const TaskDetailDrawer: React.FC = () => {
                     onChange={e => {
                       const val = e.target.value;
                       setAssigneeId(val);
-                      handleUpdateField({ assignee_id: val || null });
                     }}
                     className="w-full px-2 py-1 rounded bg-[#090D16] border border-[#1E293B] text-xs font-semibold text-slate-200 focus:outline-none focus:border-[#2563EB]/60 cursor-pointer truncate"
                   >
@@ -430,7 +503,6 @@ export const TaskDetailDrawer: React.FC = () => {
                       value={startDate}
                       onChange={val => {
                         setStartDate(val);
-                        handleUpdateField({ start_at: combineDateAndTime(val, startTime) || null });
                       }}
                       placeholder="Date de début"
                     />
@@ -438,9 +510,7 @@ export const TaskDetailDrawer: React.FC = () => {
                       type="time"
                       value={startTime}
                       onChange={e => {
-                        const val = e.target.value;
-                        setStartTime(val);
-                        if (startDate) handleUpdateField({ start_at: combineDateAndTime(startDate, val) || null });
+                        setStartTime(e.target.value);
                       }}
                       className="w-full px-2 py-1 rounded bg-[#090D16] border border-[#1E293B] text-xs text-slate-200 focus:outline-none focus:border-[#2563EB]/60"
                     />
@@ -455,7 +525,6 @@ export const TaskDetailDrawer: React.FC = () => {
                       value={endDate}
                       onChange={val => {
                         setEndDate(val);
-                        handleUpdateField({ end_at: combineDateAndTime(val, endTime) || null });
                       }}
                       placeholder="Date de fin"
                     />
@@ -463,9 +532,7 @@ export const TaskDetailDrawer: React.FC = () => {
                       type="time"
                       value={endTime}
                       onChange={e => {
-                        const val = e.target.value;
-                        setEndTime(val);
-                        if (endDate) handleUpdateField({ end_at: combineDateAndTime(endDate, val) || null });
+                        setEndTime(e.target.value);
                       }}
                       className="w-full px-2 py-1 rounded bg-[#090D16] border border-[#1E293B] text-xs text-slate-200 focus:outline-none focus:border-[#2563EB]/60"
                     />
@@ -482,7 +549,7 @@ export const TaskDetailDrawer: React.FC = () => {
                   </label>
                   <div className="flex flex-wrap gap-1.5">
                     {workspaceTags.map(tag => {
-                      const isSelected = task.tags?.some(t => t.id === tag.id);
+                      const isSelected = tagIds.includes(tag.id);
                       return (
                         <button
                           key={tag.id}
@@ -516,7 +583,6 @@ export const TaskDetailDrawer: React.FC = () => {
                 <textarea
                   value={description}
                   onChange={e => setDescription(e.target.value)}
-                  onBlur={() => handleUpdateField({ description })}
                   placeholder="Spécifications, paramètres et détails techniques..."
                   rows={4}
                   className="w-full p-2.5 rounded bg-[#090D16] border border-[#1E293B] text-xs text-slate-200 placeholder-slate-500 focus:outline-none focus:border-[#2563EB]/60 leading-relaxed"
@@ -794,6 +860,29 @@ export const TaskDetailDrawer: React.FC = () => {
             </div>
           )}
         </div>
+
+        {task && !loading && (
+          <div className="p-3 border-t border-[#1E293B] bg-[#0B1120] flex items-center justify-end gap-2">
+            {isDirty && (
+              <span className="mr-auto text-[11px] font-semibold text-amber-400">Modifications non validées</span>
+            )}
+            <button
+              onClick={() => resetForm(task)}
+              disabled={!isDirty || saving}
+              className="px-3.5 py-1.5 rounded text-xs font-semibold text-slate-300 bg-[#0F172A] border border-[#1E293B] hover:bg-[#1E293B] hover:text-slate-100 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+            >
+              Annuler
+            </button>
+            <button
+              onClick={handleSaveEdits}
+              disabled={!isDirty || saving}
+              className="flex items-center gap-1.5 px-3.5 py-1.5 rounded text-xs font-bold bg-[#2563EB] hover:bg-[#3B82F6] text-white border border-[#3B82F6]/50 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+            >
+              <Check className="w-3.5 h-3.5" />
+              {saving ? 'Validation...' : 'Valider'}
+            </button>
+          </div>
+        )}
       </div>
     </div>
   );

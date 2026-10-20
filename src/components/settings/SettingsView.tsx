@@ -220,6 +220,13 @@ export const SettingsView: React.FC = () => {
     const file = e.target.files?.[0];
     e.target.value = '';
     if (!file || !user) return;
+    const ok = await confirm({
+      title: 'Photo de profil',
+      message: `Remplacer votre photo de profil par "${file.name}" ?`,
+      confirmLabel: 'Valider',
+      variant: 'warning',
+    });
+    if (!ok) return;
     try {
       setIsUploadingAvatar(true);
       const dataUrl = await resizeImageToDataUrl(file, 400, 0.82);
@@ -237,6 +244,13 @@ export const SettingsView: React.FC = () => {
     const file = e.target.files?.[0];
     e.target.value = '';
     if (!file || !currentWorkspace) return;
+    const ok = await confirm({
+      title: 'Photo de l\'espace',
+      message: `Remplacer la photo de l'espace par "${file.name}" ?`,
+      confirmLabel: 'Valider',
+      variant: 'warning',
+    });
+    if (!ok) return;
     try {
       setIsUploadingWsPhoto(true);
       const dataUrl = await resizeImageToDataUrl(file, 500, 0.85);
@@ -345,6 +359,13 @@ export const SettingsView: React.FC = () => {
 
   // Change workspace member role
   const handleRoleChange = async (memberId: string, newRole: WorkspaceRole) => {
+    const ok = await confirm({
+      title: 'Changer le rôle',
+      message: `Changer le rôle de ce membre en "${newRole}" ?`,
+      confirmLabel: 'Valider',
+      variant: 'warning',
+    });
+    if (!ok) return;
     try {
       await api.updateWorkspaceMember(memberId, newRole);
       loadData();
@@ -400,6 +421,13 @@ export const SettingsView: React.FC = () => {
 
   // Admin: Change user global role
   const handleUserRoleChange = async (userId: string, role: 'admin' | 'member') => {
+    const ok = await confirm({
+      title: 'Changer le rôle global',
+      message: `Passer cet utilisateur en "${role === 'admin' ? 'Administrateur' : 'Membre'}" ?`,
+      confirmLabel: 'Valider',
+      variant: 'warning',
+    });
+    if (!ok) return;
     try {
       await api.updateUserRole(userId, role);
       loadAllUsers();

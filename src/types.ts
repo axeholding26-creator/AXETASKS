@@ -3,6 +3,14 @@ export type WorkspaceRole = 'admin' | 'member';
 export type WorkspaceMemberRole = 'admin' | 'member';
 
 export type TaskStatus = 'a_faire' | 'en_cours' | 'en_revision' | 'termine' | 'bloque';
+
+export const STATUS_LABELS: Record<string, string> = {
+  a_faire: 'À faire',
+  en_cours: 'En cours',
+  en_revision: 'En révision',
+  termine: 'Terminé',
+  bloque: 'Bloqué',
+};
 export type TaskPriority = 'basse' | 'normale' | 'haute' | 'urgente';
 
 export interface JobFunction {

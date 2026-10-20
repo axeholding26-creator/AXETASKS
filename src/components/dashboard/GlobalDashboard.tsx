@@ -2,7 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { useWorkspace } from '../../context/WorkspaceContext';
 import { api } from '../../lib/api';
-import { Task, TaskStatus } from '../../types';
+import { Task, TaskStatus, STATUS_LABELS } from '../../types';
+import { ConfirmDialog, useConfirm } from '../common/ConfirmDialog';
 import { StatusBadge, PriorityBadge } from '../common/Badge';
 import { Avatar } from '../common/Avatar';
 import { 
@@ -23,6 +24,7 @@ import {
 
 export const GlobalDashboard: React.FC = () => {
   const { user } = useAuth();
+  const { confirmProps, confirm } = useConfirm();
   const { setSelectedTaskId, setIsCreateTaskModalOpen, taskVersion, bumpTaskVersion } = useWorkspace();
   const [tasks, setTasks] = useState<Task[]>([]);
   const [loading, setLoading] = useState(true);
@@ -77,6 +79,13 @@ export const GlobalDashboard: React.FC = () => {
 
   const handleQuickStatusChange = async (taskId: string, newStatus: TaskStatus, e: React.MouseEvent) => {
     e.stopPropagation();
+    const ok = await confirm({
+      title: 'Changer le statut',
+      message: `Passer "${tasks.find(t => t.id === taskId)?.title || 'la tâche'}" en "${STATUS_LABELS[newStatus]}" ?`,
+      confirmLabel: 'Valider',
+      variant: 'warning',
+    });
+    if (!ok) return;
     try {
       await api.updateTask(taskId, { status: newStatus });
       bumpTaskVersion();
@@ -100,6 +109,7 @@ export const GlobalDashboard: React.FC = () => {
 
   return (
     <div className="p-6 max-w-7xl mx-auto space-y-5 animate-in fade-in duration-150 font-mono">
+      <ConfirmDialog {...confirmProps} />
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-[#1E293B] pb-4">
         <div>

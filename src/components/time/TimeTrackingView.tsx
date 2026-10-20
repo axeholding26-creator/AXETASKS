@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { useWorkspace } from '../../context/WorkspaceContext';
 import { api } from '../../lib/api';
-import { TimeAllocationWorkspace, TimeAllocationTask, User } from '../../types';
+import { TimeAllocationWorkspace, TimeAllocationTask, User, STATUS_LABELS } from '../../types';
 import { Avatar } from '../common/Avatar';
 import {
   Clock,
@@ -18,14 +18,6 @@ import {
   LayoutGrid,
   History
 } from 'lucide-react';
-
-const STATUS_LABELS: Record<string, string> = {
-  a_faire: 'À faire',
-  en_cours: 'En cours',
-  en_revision: 'En révision',
-  termine: 'Terminé',
-  bloque: 'Bloqué',
-};
 
 function formatMinutes(mins: number): string {
   const h = Math.floor(mins / 60);

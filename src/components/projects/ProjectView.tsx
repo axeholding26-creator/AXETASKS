@@ -2,7 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { useWorkspace } from '../../context/WorkspaceContext';
 import { useAuth } from '../../context/AuthContext';
 import { api } from '../../lib/api';
-import { Task, TaskStatus, TaskPriority, Tag, User } from '../../types';
+import { Task, TaskStatus, TaskPriority, Tag, User, STATUS_LABELS } from '../../types';
+import { ConfirmDialog, useConfirm } from '../common/ConfirmDialog';
 import { StatusBadge, PriorityBadge } from '../common/Badge';
 import { Avatar } from '../common/Avatar';
 import { EditProjectModal } from '../common/EditModal';
@@ -44,6 +45,7 @@ interface ProjectViewProps {
 
 export const ProjectView: React.FC<ProjectViewProps> = ({ onBackToWorkspace }) => {
   const { user } = useAuth();
+  const { confirmProps, confirm } = useConfirm();
   const {
     currentProject,
     currentWorkspace,
@@ -159,6 +161,15 @@ export const ProjectView: React.FC<ProjectViewProps> = ({ onBackToWorkspace }) =
       return;
     }
 
+    setDraggedTaskId(null);
+    const ok = await confirm({
+      title: 'Changer le statut',
+      message: `Passer "${task.title}" en "${STATUS_LABELS[targetStatus]}" ?`,
+      confirmLabel: 'Valider',
+      variant: 'warning',
+    });
+    if (!ok) return;
+
     // Celebration confetti if dropped in "Terminé"
     if (targetStatus === 'termine') {
       confetti({
@@ -235,6 +246,7 @@ export const ProjectView: React.FC<ProjectViewProps> = ({ onBackToWorkspace }) =
 
   return (
     <div className="p-6 max-w-[1600px] mx-auto space-y-4 animate-in fade-in duration-150 font-mono">
+      <ConfirmDialog {...confirmProps} />
       {/* Edit Project Modal */}
       {currentProject && (
         <EditProjectModal
