@@ -22,11 +22,11 @@ export const Avatar: React.FC<AvatarProps> = ({
   const avatarUrl = propUrl || user?.avatar_url;
 
   const sizeMap = {
-    xs: 'w-5 h-5 text-[10px]',
-    sm: 'w-6 h-6 text-xs',
-    md: 'w-8 h-8 text-xs font-medium',
-    lg: 'w-10 h-10 text-sm font-semibold',
-    xl: 'w-14 h-14 text-base font-bold',
+    xs: 'w-6 h-6 text-[10px]',
+    sm: 'w-7 h-7 text-xs',
+    md: 'w-9 h-9 text-xs font-medium',
+    lg: 'w-12 h-12 text-sm font-semibold',
+    xl: 'w-16 h-16 text-base font-bold',
   };
 
   const getInitials = (n: string) => {
