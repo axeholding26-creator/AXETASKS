@@ -67,7 +67,7 @@ export const CommandCenter: React.FC<Props> = ({ tab, onTabChange, onOpenProject
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
           <div className="flex items-center gap-2 text-[10px] font-bold text-[#60A5FA] uppercase tracking-wider mb-1">
-            <Radar className="w-3.5 h-3.5" /> <span>Command Center</span>
+            <Radar className="w-3.5 h-3.5" /> <span>Centre de contrôle</span>
           </div>
           <h1 className="text-xl font-bold text-slate-100 tracking-tight">{tab === 'pilotage' ? 'Pilotage opérationnel' : 'Analyses'}</h1>
           <p className="text-xs text-slate-400 mt-0.5">
@@ -110,7 +110,7 @@ export const CommandCenter: React.FC<Props> = ({ tab, onTabChange, onOpenProject
     return (
       <div className="p-4 sm:p-6 max-w-7xl mx-auto space-y-5 font-mono">
         {header}
-        <ChartCard title="Command Center" question="Chargement des données" loading={loading} error={error}><div /></ChartCard>
+        <ChartCard title="Centre de contrôle" question="Chargement des données" loading={loading} error={error}><div /></ChartCard>
       </div>
     );
   }
@@ -211,7 +211,7 @@ const Pilotage: React.FC<any> = ({ scope, tasks, health, now, dayStart, days, us
           <Kpi label="Charge restante" value={fmtHours(rem.minutes)} hint={`${rem.estimated} estimées · ${rem.unestimated} sans estimation`} />
           <Kpi label="Projets sains" value={healthCount('sain')} hint="Aucun signal de risque" tone="text-emerald-400" active={healthFilter === 'sain'} onClick={() => setHealthFilter(healthFilter === 'sain' ? null : 'sain')} />
           <Kpi label="Sous surveillance" value={healthCount('surveiller')} hint="Retard, blocage ou rythme lent" tone="text-amber-400" active={healthFilter === 'surveiller'} onClick={() => setHealthFilter(healthFilter === 'surveiller' ? null : 'surveiller')} />
-          <Kpi label="Projets critiques" value={healthCount('critique')} hint="Voir les règles dans Project Radar" tone={healthCount('critique') ? 'text-rose-400' : 'text-slate-100'} active={healthFilter === 'critique'} onClick={() => setHealthFilter(healthFilter === 'critique' ? null : 'critique')} />
+          <Kpi label="Projets critiques" value={healthCount('critique')} hint="Voir les règles dans le Radar des projets" tone={healthCount('critique') ? 'text-rose-400' : 'text-slate-100'} active={healthFilter === 'critique'} onClick={() => setHealthFilter(healthFilter === 'critique' ? null : 'critique')} />
           <Kpi label={isAdmin ? 'Alertes non lues (équipe)' : 'Alertes non lues'} value={unread} hint="Notifications non lues, 180 derniers jours" tone={unread ? 'text-amber-300' : 'text-slate-100'}
             onClick={() => window.dispatchEvent(new Event('axetask:open-notifications'))} />
         </div>
@@ -314,10 +314,10 @@ const Pilotage: React.FC<any> = ({ scope, tasks, health, now, dayStart, days, us
       </div>
 
       {/* D. Project radar */}
-      <section className="bg-[#0F172A] border border-[#1E293B] rounded-lg overflow-hidden" aria-label="Project Radar">
+      <section className="bg-[#0F172A] border border-[#1E293B] rounded-lg overflow-hidden" aria-label="Radar des projets">
         <header className="px-4 py-3 border-b border-[#1E293B] flex flex-wrap items-center gap-2">
           <Gauge className="w-4 h-4 text-[#60A5FA]" />
-          <h2 className="text-xs font-bold text-slate-100">Project Radar</h2>
+          <h2 className="text-xs font-bold text-slate-100">Radar des projets</h2>
           {healthFilter && <button onClick={() => setHealthFilter(null)} className="text-[10px] px-2 py-0.5 rounded border border-[#2563EB]/40 text-[#93C5FD] flex items-center gap-1">{HEALTH_LABELS[healthFilter as Health]} <X className="w-3 h-3" /></button>}
           <details className="ml-auto text-[10px] text-slate-400">
             <summary className="cursor-pointer hover:text-slate-200">Règles de santé</summary>
@@ -376,10 +376,10 @@ const TeamPulse: React.FC<{ scope: Scope; tasks: ScopeTask[]; now: number; days:
     };
   }).filter(x => x.open + x.done > 0);
   return (
-    <section className="bg-[#0F172A] border border-[#1E293B] rounded-lg overflow-hidden" aria-label="Team Pulse">
+    <section className="bg-[#0F172A] border border-[#1E293B] rounded-lg overflow-hidden" aria-label="Pouls des équipes">
       <header className="px-4 py-3 border-b border-[#1E293B] flex items-center gap-2">
         <Users className="w-4 h-4 text-[#60A5FA]" />
-        <h2 className="text-xs font-bold text-slate-100">Team Pulse</h2>
+        <h2 className="text-xs font-bold text-slate-100">Pouls des équipes</h2>
         <span className="text-[10px] text-slate-500 ml-auto">Par espace (équipe) · capacité non renseignée dans AxeTasks</span>
       </header>
       {teams.length === 0 ? <p className="p-6 text-center text-xs text-slate-500">Aucune activité dans ce périmètre.</p> : (
@@ -483,7 +483,7 @@ const Analyses: React.FC<any> = ({ scope, tasks, health, now, days, filters, use
         ]} />
       </ChartCard>
 
-      <ChartCard title="Burnup / Burndown" question="Le projet avance-t-il assez vite, et son périmètre grossit-il ?"
+      <ChartCard title="Avancement du projet (accompli / restant)" question="Le projet avance-t-il assez vite, et son périmètre grossit-il ?"
         empty={!burn.length} emptyText="Aucune tâche dans ce projet."
         actions={!filters.project_id && burnCandidates.length > 1 ? (
           <select value={burnId} onChange={e => setBurnProject(e.target.value)} aria-label="Projet" className="bg-[#0B1120] border border-[#1E293B] rounded px-1.5 py-1 text-[10px] text-slate-200 max-w-[9rem]">
@@ -494,8 +494,8 @@ const Analyses: React.FC<any> = ({ scope, tasks, health, now, days, filters, use
         table={{ head: ['Jour', 'Périmètre', 'Terminées', 'Restantes'], rows: burn.map(d => [fmtDay(d.key), d.scope, d.done, d.remaining]) }}>
         <LineChart labels={burn.map(d => fmtDay(d.key))} series={[
           { name: 'Périmètre total', color: REFERENCE, dashed: true, values: burn.map(d => d.scope) },
-          { name: 'Terminées (burnup)', color: SERIES[0], values: burn.map(d => d.done) },
-          { name: 'Restantes (burndown)', color: SERIES[1], values: burn.map(d => d.remaining) },
+          { name: 'Terminées (travail accompli)', color: SERIES[0], values: burn.map(d => d.done) },
+          { name: 'Restantes (travail restant)', color: SERIES[1], values: burn.map(d => d.remaining) },
         ]} />
       </ChartCard>
 

@@ -413,13 +413,13 @@ export function completionXp(c: CompletionContext): { points: number; tier: XpTi
 // ---------------------------------------------------------------- levels
 
 export const LEVELS = [
-  { level: 1, name: 'Initiate', min: 0 },
-  { level: 2, name: 'Builder', min: 100 },
-  { level: 3, name: 'Operator', min: 300 },
-  { level: 4, name: 'Strategist', min: 700 },
-  { level: 5, name: 'Elite Executor', min: 1500 },
-  { level: 6, name: 'Master Operator', min: 3000 },
-  { level: 7, name: 'Apex Performer', min: 6000 },
+  { level: 1, name: 'Initié', min: 0 },
+  { level: 2, name: 'Bâtisseur', min: 100 },
+  { level: 3, name: 'Opérateur', min: 300 },
+  { level: 4, name: 'Stratège', min: 700 },
+  { level: 5, name: 'Exécutant d\'élite', min: 1500 },
+  { level: 6, name: 'Maître opérateur', min: 3000 },
+  { level: 7, name: 'Sommet de la performance', min: 6000 },
 ];
 
 export function levelFor(xp: number) {
@@ -471,14 +471,14 @@ export interface BadgeStats {
 }
 
 export const BADGES: { id: string; name: string; rule: string; earned: (s: BadgeStats) => boolean; progress: (s: BadgeStats) => [number, number] }[] = [
-  { id: 'deadline_master', name: 'Deadline Master', rule: '≥ 10 tâches avec échéance terminées à temps et ≥ 90 % de ponctualité sur 90 jours',
+  { id: 'deadline_master', name: 'Maître des échéances', rule: '≥ 10 tâches avec échéance terminées à temps et ≥ 90 % de ponctualité sur 90 jours',
     earned: s => s.onTimeCompleted >= 10 && s.onTimeCompleted / Math.max(1, s.withDeadline) >= 0.9, progress: s => [Math.min(s.onTimeCompleted, 10), 10] },
-  { id: 'blocker_breaker', name: 'Blocker Breaker', rule: '5 blocages levés (bloqués ≥ 1 h)', earned: s => s.blockersResolved >= 5, progress: s => [Math.min(s.blockersResolved, 5), 5] },
-  { id: 'quality_guardian', name: 'Quality Guardian', rule: '5 livrables validés par un pair, jamais réouverts', earned: s => s.validatedKept >= 5, progress: s => [Math.min(s.validatedKept, 5), 5] },
-  { id: 'team_catalyst', name: 'Team Catalyst', rule: '5 reconnaissances reçues de collègues', earned: s => s.kudosReceived >= 5, progress: s => [Math.min(s.kudosReceived, 5), 5] },
-  { id: 'project_finisher', name: 'Project Finisher', rule: 'Contribution à un projet terminé', earned: s => s.projectsCompleted >= 1, progress: s => [Math.min(s.projectsCompleted, 1), 1] },
-  { id: 'consistency_builder', name: 'Consistency Builder', rule: 'Série de 10 jours ouvrés', earned: s => s.bestStreak >= 10, progress: s => [Math.min(s.bestStreak, 10), 10] },
-  { id: 'strategic_executor', name: 'Strategic Executor', rule: '3 tâches urgentes validées par un pair', earned: s => s.criticalValidated >= 3, progress: s => [Math.min(s.criticalValidated, 3), 3] },
+  { id: 'blocker_breaker', name: 'Briseur de blocages', rule: '5 blocages levés (bloqués ≥ 1 h)', earned: s => s.blockersResolved >= 5, progress: s => [Math.min(s.blockersResolved, 5), 5] },
+  { id: 'quality_guardian', name: 'Gardien de la qualité', rule: '5 livrables validés par un pair, jamais réouverts', earned: s => s.validatedKept >= 5, progress: s => [Math.min(s.validatedKept, 5), 5] },
+  { id: 'team_catalyst', name: 'Catalyseur d\'équipe', rule: '5 reconnaissances reçues de collègues', earned: s => s.kudosReceived >= 5, progress: s => [Math.min(s.kudosReceived, 5), 5] },
+  { id: 'project_finisher', name: 'Finisseur de projets', rule: 'Contribution à un projet terminé', earned: s => s.projectsCompleted >= 1, progress: s => [Math.min(s.projectsCompleted, 1), 1] },
+  { id: 'consistency_builder', name: 'Champion de la régularité', rule: 'Série de 10 jours ouvrés', earned: s => s.bestStreak >= 10, progress: s => [Math.min(s.bestStreak, 10), 10] },
+  { id: 'strategic_executor', name: 'Exécutant stratégique', rule: '3 tâches urgentes validées par un pair', earned: s => s.criticalValidated >= 3, progress: s => [Math.min(s.criticalValidated, 3), 3] },
 ];
 
 // ---------------------------------------------------------------- missions

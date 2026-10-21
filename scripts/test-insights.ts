@@ -95,10 +95,10 @@ async function pure() {
     assert.equal(completionXp({ ...base, priority: 'normale', earnedToday: XP_RULES.dailyCap - 4 }).points, 4);
   });
   await test('Niveaux', () => {
-    assert.equal(levelFor(0).name, 'Initiate');
+    assert.equal(levelFor(0).name, 'Initié');
     assert.equal(levelFor(99).level, 1);
     assert.equal(levelFor(100).level, 2);
-    assert.equal(levelFor(10_000).name, 'Apex Performer');
+    assert.equal(levelFor(10_000).name, 'Sommet de la performance');
     assert.equal(levelFor(10_000).next, null);
   });
   await test('Streaks : week-end neutre, 1 jour manqué pardonné, 2 cassent', () => {

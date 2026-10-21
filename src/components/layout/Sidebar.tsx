@@ -195,7 +195,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ currentView, onNavigate, isOpe
 
         {/* Top Core Navigation Links — fixed height */}
         <div className="p-2 space-y-0.5 shrink-0">
-          <NavItem active={currentView === 'command'} onClick={() => onNavigate('command')} icon={<Radar className="w-3.5 h-3.5 text-[#3B82F6]" />} label="Command Center" />
+          <NavItem active={currentView === 'command'} onClick={() => onNavigate('command')} icon={<Radar className="w-3.5 h-3.5 text-[#3B82F6]" />} label="Centre de contrôle" />
           <button
             onClick={() => onNavigate('dashboard')}
             className={`w-full flex items-center justify-between px-2.5 py-1.5 rounded text-xs transition-all ${

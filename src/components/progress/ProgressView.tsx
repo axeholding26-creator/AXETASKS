@@ -65,7 +65,7 @@ export const ProgressView: React.FC = () => {
   return (
     <div className="p-4 sm:p-6 max-w-6xl mx-auto space-y-5 font-mono animate-in fade-in duration-150 motion-reduce:animate-none">
       <div className="border-b border-[#1E293B] pb-4">
-        <div className="flex items-center gap-2 text-[10px] font-bold text-[#60A5FA] uppercase tracking-wider mb-1"><Trophy className="w-3.5 h-3.5" /> AXETASKS XP</div>
+        <div className="flex items-center gap-2 text-[10px] font-bold text-[#60A5FA] uppercase tracking-wider mb-1"><Trophy className="w-3.5 h-3.5" /> Points d'expérience AxeTask (AXP)</div>
         <h1 className="text-xl font-bold text-slate-100">Progression</h1>
         <p className="text-xs text-slate-400 mt-0.5">Les AXP récompensent des événements vérifiés (livrables validés, blocages levés, entraide). Ils ne mesurent pas la valeur professionnelle et ne sont liés à aucune rémunération.</p>
       </div>
@@ -124,8 +124,8 @@ export const ProgressView: React.FC = () => {
           <ColumnChart data={xp.weekly.map(w => ({ label: fmtDay(w.key), value: w.value }))} unit=" AXP" />
         </ChartCard>
 
-        <section className="bg-[#0F172A] border border-[#1E293B] rounded-lg p-4" aria-label="Badges">
-          <p className="text-xs font-bold text-slate-100 flex items-center gap-2 mb-3"><Award className="w-4 h-4 text-violet-400" /> Badges</p>
+        <section className="bg-[#0F172A] border border-[#1E293B] rounded-lg p-4" aria-label="Insignes">
+          <p className="text-xs font-bold text-slate-100 flex items-center gap-2 mb-3"><Award className="w-4 h-4 text-violet-400" /> Insignes</p>
           <ul className="space-y-2">
             {xp.badges.map(b => (
               <li key={b.id} className={`flex items-center gap-3 ${b.earned ? '' : 'opacity-70'}`}>

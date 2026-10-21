@@ -39,7 +39,7 @@ export const CommandPalette: React.FC<Props> = ({ open, onClose, onNavigate }) =
 
   const actions: Item[] = useMemo(() => [
     { id: 'a-new', label: 'Créer une tâche', icon: <Plus className="w-3.5 h-3.5" />, run: go(() => setIsCreateTaskModalOpen(true)) },
-    { id: 'a-cc', label: 'Ouvrir le Command Center', hint: 'À traiter maintenant, mission du jour', icon: <Radar className="w-3.5 h-3.5" />, run: go(() => onNavigate('command')) },
+    { id: 'a-cc', label: 'Ouvrir le Centre de contrôle', hint: 'À traiter maintenant, mission du jour', icon: <Radar className="w-3.5 h-3.5" />, run: go(() => onNavigate('command')) },
     { id: 'a-mine', label: 'Mes tâches prioritaires', icon: <ListTodo className="w-3.5 h-3.5" />, run: go(() => onNavigate('dashboard')) },
     { id: 'a-alerts', label: 'Ouvrir le centre d’alertes', icon: <Bell className="w-3.5 h-3.5" />, run: go(() => window.dispatchEvent(new Event('axetask:open-notifications'))) },
     { id: 'a-ana', label: 'Voir les analyses', icon: <BarChart3 className="w-3.5 h-3.5" />, run: go(() => onNavigate('analytics')) },
