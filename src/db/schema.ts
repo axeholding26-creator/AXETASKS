@@ -1,5 +1,5 @@
 import { relations } from 'drizzle-orm';
-import { pgTable, text, integer, boolean, timestamp, jsonb } from 'drizzle-orm/pg-core';
+import { pgTable, text, integer, boolean, timestamp, jsonb, index, uniqueIndex } from 'drizzle-orm/pg-core';
 
 export const jobFunctions = pgTable('job_functions', {
   id: text('id').primaryKey(),
@@ -58,7 +58,10 @@ export const projectMembers = pgTable('project_members', {
   project_id: text('project_id').notNull().references(() => projects.id, { onDelete: 'cascade' }),
   user_id: text('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
   added_at: timestamp('added_at').defaultNow(),
-});
+}, (t) => [
+  index('project_members_project_id_idx').on(t.project_id),
+  uniqueIndex('project_members_unique_idx').on(t.project_id, t.user_id),
+]);
 
 export const tags = pgTable('tags', {
   id: text('id').primaryKey(),
@@ -159,7 +162,9 @@ export const announcements = pgTable('announcements', {
   content: text('content').notNull(),
   created_by: text('created_by').references(() => users.id),
   created_at: timestamp('created_at').defaultNow(),
-});
+}, (t) => [
+  index('announcements_created_at_idx').on(t.created_at),
+]);
 
 // Audit trail: one row per successful mutating API call (see auditMiddleware
 // in src/server/app.ts). user_name is copied so entries survive user deletion.
@@ -172,7 +177,9 @@ export const activityLogs = pgTable('activity_logs', {
   entity_label: text('entity_label'),
   details: jsonb('details'),
   created_at: timestamp('created_at').defaultNow(),
-});
+}, (t) => [
+  index('activity_logs_created_at_idx').on(t.created_at.desc()),
+]);
 
 export const notifications = pgTable('notifications', {
   id: text('id').primaryKey(),
@@ -185,7 +192,10 @@ export const notifications = pgTable('notifications', {
   workspace_id: text('workspace_id').references(() => workspaces.id, { onDelete: 'cascade' }),
   is_read: boolean('is_read').notNull().default(false),
   created_at: timestamp('created_at').defaultNow(),
-});
+}, (t) => [
+  index('notifications_user_id_idx').on(t.user_id),
+  index('notifications_task_id_idx').on(t.task_id),
+]);
 
 // One row per browser/device that accepted Web Push for a user.
 export const pushSubscriptions = pgTable('push_subscriptions', {
@@ -194,7 +204,9 @@ export const pushSubscriptions = pgTable('push_subscriptions', {
   p256dh: text('p256dh').notNull(),
   auth: text('auth').notNull(),
   created_at: timestamp('created_at').defaultNow(),
-});
+}, (t) => [
+  index('push_subscriptions_user_id_idx').on(t.user_id),
+]);
 
 // One row per installed mobile app (native FCM device token).
 export const mobilePushTokens = pgTable('mobile_push_tokens', {
@@ -203,7 +215,9 @@ export const mobilePushTokens = pgTable('mobile_push_tokens', {
   // Android notification channel (= the sound the user picked in the app).
   channel: text('channel'),
   created_at: timestamp('created_at').defaultNow(),
-});
+}, (t) => [
+  index('mobile_push_tokens_user_id_idx').on(t.user_id),
+]);
 
 // Relationships
 export const jobFunctionsRelations = relations(jobFunctions, ({ many }) => ({
