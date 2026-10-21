@@ -7,7 +7,11 @@ self.addEventListener('push', event => {
     body: data.body || undefined,
     icon: '/icon-192.png',
     badge: '/badge.png',
-    tag: data.id,
+    // renotify: a replaced notification (same tag) still rings/vibrates.
+    tag: data.id || 'axetask',
+    renotify: true,
+    silent: false,
+    vibrate: [200, 100, 200],
     data: { url: data.url || '/' },
   }));
 });

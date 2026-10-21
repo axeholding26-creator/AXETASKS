@@ -81,6 +81,9 @@ export const NotificationsBell: React.FC<NotificationsBellProps> = ({ onOpenWork
   const [notifications, setNotifications] = useState<AppNotification[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
   const [loading, setLoading] = useState(true);
+  // Re-shown on every login (state, not storage) until notifications are allowed.
+  const [permission, setPermission] = useState(() => ('Notification' in window ? Notification.permission : 'granted'));
+  const [permissionBannerHidden, setPermissionBannerHidden] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
   // Persisted to localStorage (not just a component ref) so an id, once
   // announced, never sounds/pops again even across a page reload, a closed
@@ -114,7 +117,7 @@ export const NotificationsBell: React.FC<NotificationsBellProps> = ({ onOpenWork
             // throws on Android Chrome.
             navigator.serviceWorker?.getRegistration().then(reg => {
               newOnes.slice(0, 3).forEach(n => {
-                const opts = { body: n.message || undefined, icon: '/icon-192.png', tag: n.id };
+                const opts = { body: n.message || undefined, icon: '/icon-192.png', tag: n.id, renotify: true, vibrate: [200, 100, 200] } as NotificationOptions;
                 if (reg) reg.showNotification(n.title, opts);
                 else new Notification(n.title, opts).onclick = () => window.focus();
               });
@@ -156,7 +159,7 @@ export const NotificationsBell: React.FC<NotificationsBellProps> = ({ onOpenWork
     // on the first interaction instead of waiting for a click on the bell.
     if (!('Notification' in window) || Notification.permission !== 'default') return;
     const ask = () => {
-      Notification.requestPermission().then(p => { if (p === 'granted') enablePush(); }).catch(() => {});
+      Notification.requestPermission().then(p => { setPermission(p); if (p === 'granted') enablePush(); }).catch(() => {});
     };
     document.addEventListener('pointerdown', ask, { once: true });
     return () => document.removeEventListener('pointerdown', ask);
@@ -184,9 +187,13 @@ export const NotificationsBell: React.FC<NotificationsBellProps> = ({ onOpenWork
     if (next) {
       pollNotifications();
       if ('Notification' in window && Notification.permission === 'default') {
-        Notification.requestPermission().then(p => { if (p === 'granted') enablePush(); }).catch(() => {});
+        Notification.requestPermission().then(p => { setPermission(p); if (p === 'granted') enablePush(); }).catch(() => {});
       }
     }
+  };
+
+  const requestNotificationPermission = () => {
+    Notification.requestPermission().then(p => { setPermission(p); if (p === 'granted') enablePush(); }).catch(() => {});
   };
 
   const handleMarkAllRead = async () => {
@@ -247,6 +254,24 @@ export const NotificationsBell: React.FC<NotificationsBellProps> = ({ onOpenWork
 
   return (
     <div className="relative" ref={dropdownRef}>
+      {permission !== 'granted' && !permissionBannerHidden && (
+        <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-[90] w-[calc(100%-2rem)] max-w-md p-3 rounded-lg bg-[#0F172A] border border-[#2563EB]/50 shadow-2xl shadow-black/60 font-mono flex items-start gap-3">
+          <BellRing className="w-4 h-4 text-[#60A5FA] shrink-0 mt-0.5" />
+          <div className="flex-1 min-w-0">
+            <p className="text-xs font-bold text-slate-100">Notifications désactivées sur cet appareil</p>
+            {permission === 'denied' ? (
+              <p className="text-[11px] text-slate-400 mt-1">Elles sont bloquées par le navigateur : clique sur le cadenas à gauche de l'adresse, puis Notifications → Autoriser, et recharge la page.</p>
+            ) : (
+              <button onClick={requestNotificationPermission} className="mt-2 px-3 py-1 rounded text-xs font-bold bg-[#2563EB] hover:bg-[#1D4ED8] text-white">
+                Activer les notifications
+              </button>
+            )}
+          </div>
+          <button onClick={() => setPermissionBannerHidden(true)} className="p-1 rounded text-slate-500 hover:text-slate-200" title="Plus tard">
+            <X className="w-3.5 h-3.5" />
+          </button>
+        </div>
+      )}
       <button
         onClick={toggleOpen}
         className="relative p-1.5 rounded text-slate-300 hover:text-white hover:bg-[#1E293B] transition-colors"

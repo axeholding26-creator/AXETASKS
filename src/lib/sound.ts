@@ -242,8 +242,13 @@ export function playNotificationSound(specificType?: SoundEffectType): string {
 
   try {
     const masterGain = ctx.createGain();
-    masterGain.gain.setValueAtTime(volume * 1.8, ctx.currentTime); // Balanced volume (louder than original, less than 3.0)
-    masterGain.connect(ctx.destination);
+    // Loud on purpose: boosted gain, with a compressor so it doesn't clip.
+    masterGain.gain.setValueAtTime(volume * 4, ctx.currentTime);
+    const limiter = ctx.createDynamicsCompressor();
+    limiter.threshold.setValueAtTime(-6, ctx.currentTime);
+    limiter.ratio.setValueAtTime(20, ctx.currentTime);
+    masterGain.connect(limiter);
+    limiter.connect(ctx.destination);
 
     switch (type) {
       case 'crystal_bell':

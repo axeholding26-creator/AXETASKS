@@ -2247,7 +2247,7 @@ async function sendMobilePush(userId: string, payload: PushPayload) {
         android: {
           priority: 'high',
           ttl: 24 * 60 * 60 * 1000,
-          notification: { channelId: t.channel || 'default', tag: payload.id, color: '#2563EB' },
+          notification: { channelId: t.channel || 'harmonic_success_loud', tag: payload.id, color: '#2563EB' },
         },
       });
     } catch (err: any) {
