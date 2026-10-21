@@ -103,7 +103,7 @@ export const ProjectView: React.FC<ProjectViewProps> = ({ onBackToWorkspace }) =
     }
   };
 
-  const handleSaveProject = async (data: { name: string; description: string; start_at?: string; end_at?: string; status: string }) => {
+  const handleSaveProject = async (data: { name: string; description: string; start_at?: string; end_at?: string; status: string; link: string | null }) => {
     if (!currentProject) return;
     await api.updateProject(currentProject.id, {
       name: data.name,
@@ -111,6 +111,7 @@ export const ProjectView: React.FC<ProjectViewProps> = ({ onBackToWorkspace }) =
       start_at: data.start_at,
       end_at: data.end_at,
       status: data.status as any,
+      link: data.link,
     });
     // Re-fetch the project itself so the header shows the new name/description
     await setCurrentProjectId(currentProject.id);
@@ -256,6 +257,7 @@ export const ProjectView: React.FC<ProjectViewProps> = ({ onBackToWorkspace }) =
           initialStartAt={currentProject.start_at || null}
           initialEndAt={currentProject.end_at || null}
           initialStatus={currentProject.status}
+          initialLink={currentProject.link}
           onSave={handleSaveProject}
           onClose={() => setIsEditProjectOpen(false)}
         />

@@ -478,7 +478,7 @@ export const SettingsView: React.FC = () => {
   };
 
   // Save edits made to a project (name, description, status, dates)
-  const handleSaveProjectEdit = async (data: { name: string; description: string; start_at?: string; end_at?: string; status: string }) => {
+  const handleSaveProjectEdit = async (data: { name: string; description: string; start_at?: string; end_at?: string; status: string; link: string | null }) => {
     if (!editingProject) return;
     await api.updateProject(editingProject.id, {
       name: data.name,
@@ -486,6 +486,7 @@ export const SettingsView: React.FC = () => {
       start_at: data.start_at,
       end_at: data.end_at,
       status: data.status as any,
+      link: data.link,
     });
     setEditingProject(null);
     loadData();
@@ -1651,6 +1652,7 @@ export const SettingsView: React.FC = () => {
             initialStartAt={editingProject?.start_at || null}
             initialEndAt={editingProject?.end_at || null}
             initialStatus={editingProject?.status || 'active'}
+            initialLink={editingProject?.link}
             onSave={handleSaveProjectEdit}
             onClose={() => setEditingProject(null)}
           />

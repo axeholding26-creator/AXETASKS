@@ -164,7 +164,8 @@ interface EditProjectModalProps {
   initialStartAt: string | null;
   initialEndAt: string | null;
   initialStatus: 'active' | 'archived' | 'planned' | 'completed';
-  onSave: (data: { name: string; description: string; start_at?: string; end_at?: string; status: string }) => Promise<void>;
+  initialLink?: string | null;
+  onSave: (data: { name: string; description: string; start_at?: string; end_at?: string; status: string; link: string | null }) => Promise<void>;
   onClose: () => void;
 }
 
@@ -175,6 +176,7 @@ export const EditProjectModal: React.FC<EditProjectModalProps> = ({
   initialStartAt,
   initialEndAt,
   initialStatus,
+  initialLink,
   onSave,
   onClose,
 }) => {
@@ -187,6 +189,7 @@ export const EditProjectModal: React.FC<EditProjectModalProps> = ({
   const [endDate, setEndDate] = React.useState(initialEnd.date);
   const [endTime, setEndTime] = React.useState(initialEnd.time || '18:00');
   const [status, setStatus] = React.useState(initialStatus);
+  const [link, setLink] = React.useState(initialLink || '');
   const [loading, setLoading] = React.useState(false);
   const [error, setError] = React.useState('');
   const inputRef = useRef<HTMLInputElement>(null);
@@ -202,10 +205,11 @@ export const EditProjectModal: React.FC<EditProjectModalProps> = ({
       setEndDate(en.date);
       setEndTime(en.time || '18:00');
       setStatus(initialStatus);
+      setLink(initialLink || '');
       setError('');
       setTimeout(() => inputRef.current?.focus(), 50);
     }
-  }, [isOpen, initialName, initialDescription, initialStartAt, initialEndAt, initialStatus]);
+  }, [isOpen, initialName, initialDescription, initialStartAt, initialEndAt, initialStatus, initialLink]);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -228,6 +232,7 @@ export const EditProjectModal: React.FC<EditProjectModalProps> = ({
         start_at: combineDateAndTime(startDate, startTime),
         end_at: combineDateAndTime(endDate, endTime),
         status,
+        link: link.trim() || null,
       });
       onClose();
     } catch (err: any) {
@@ -250,7 +255,7 @@ export const EditProjectModal: React.FC<EditProjectModalProps> = ({
         <div className="p-4 border-b border-[#1E293B] flex items-center justify-between">
           <div>
             <h2 className="text-sm font-bold text-slate-100">Modifier le projet</h2>
-            <p className="text-[11px] text-slate-400 mt-0.5">Nom, description, statut et échéance</p>
+            <p className="text-[11px] text-slate-400 mt-0.5">Nom, description, lien, statut et échéance</p>
           </div>
           <button onClick={onClose} className="p-1.5 rounded text-slate-500 hover:text-slate-200 hover:bg-[#1E293B] transition-colors">
             <X className="w-4 h-4" />
@@ -286,6 +291,21 @@ export const EditProjectModal: React.FC<EditProjectModalProps> = ({
               placeholder="Objectifs, périmètre, notes..."
               rows={3}
               className="w-full px-3 py-2 rounded bg-[#090D16] border border-[#1E293B] text-xs text-slate-200 placeholder-slate-500 focus:outline-none focus:border-[#2563EB]/60 leading-relaxed resize-none transition-colors"
+            />
+          </div>
+
+          {/* Link */}
+          <div>
+            <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1.5">
+              Lien du projet
+            </label>
+            <input
+              type="text"
+              inputMode="url"
+              value={link}
+              onChange={e => setLink(e.target.value)}
+              placeholder="https://..."
+              className="w-full px-3 py-2 rounded bg-[#090D16] border border-[#1E293B] text-xs text-slate-200 placeholder-slate-500 focus:outline-none focus:border-[#2563EB]/60 transition-colors"
             />
           </div>
 
