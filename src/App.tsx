@@ -19,8 +19,13 @@ import { CreateTaskModal } from './components/modals/CreateTaskModal';
 import { CreateProjectModal } from './components/modals/CreateProjectModal';
 import { CreateWorkspaceModal } from './components/modals/CreateWorkspaceModal';
 import { BrandLogo } from './components/common/BrandLogo';
+import { CommandCenter } from './components/command/CommandCenter';
+import { ProgressView } from './components/progress/ProgressView';
 
 type NavigationTab =
+  | 'command'
+  | 'analytics'
+  | 'progress'
   | 'dashboard'
   | 'workspaces'
   | 'workspace_detail'
@@ -34,7 +39,7 @@ type NavigationTab =
 function MainAppLayout() {
   const { user, loading } = useAuth();
   const { currentWorkspace, currentProject, setCurrentProjectId } = useWorkspace();
-  const [currentView, setCurrentView] = useState<NavigationTab>('dashboard');
+  const [currentView, setCurrentView] = useState<NavigationTab>('command');
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [minLoadingTimePassed, setMinLoadingTimePassed] = useState(false);
 
@@ -77,6 +82,7 @@ function MainAppLayout() {
         onOpenDashboard={() => setCurrentView('dashboard')}
         onOpenWorkspaces={() => setCurrentView('workspaces')}
         onOpenAnnouncements={() => setCurrentView('announcements')}
+        onNavigate={(view) => setCurrentView(view)}
         onMenuToggle={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
       />
 
@@ -93,6 +99,19 @@ function MainAppLayout() {
 
       {/* Main content — body is the scroll container (fixes fixed positioning on mobile) */}
       <main className="min-h-screen bg-[#090D16] pt-14 md:pl-60 relative">
+        {(currentView === 'command' || currentView === 'analytics') && (
+          <CommandCenter
+            tab={currentView === 'command' ? 'pilotage' : 'analyses'}
+            onTabChange={(t) => setCurrentView(t === 'pilotage' ? 'command' : 'analytics')}
+            onOpenProject={(projectId) => {
+              setCurrentProjectId(projectId);
+              setCurrentView('project_detail');
+            }}
+          />
+        )}
+
+        {currentView === 'progress' && <ProgressView />}
+
         {currentView === 'dashboard' && <GlobalDashboard />}
 
         {currentView === 'workspaces' && (

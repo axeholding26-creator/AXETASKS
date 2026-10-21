@@ -19,10 +19,28 @@ import {
   Kanban,
   MessageSquare,
   Megaphone,
-  ScrollText
+  ScrollText,
+  Radar,
+  BarChart3,
+  Trophy
 } from 'lucide-react';
 
-type SidebarView = 'dashboard' | 'workspaces' | 'workspace_detail' | 'project_detail' | 'time_tracking' | 'messages' | 'announcements' | 'activity' | 'settings';
+const NavItem: React.FC<{ active: boolean; onClick: () => void; icon: React.ReactNode; label: string }> = ({ active, onClick, icon, label }) => (
+  <button
+    onClick={onClick}
+    aria-current={active ? 'page' : undefined}
+    className={`w-full flex items-center gap-2 px-2.5 py-1.5 rounded text-xs transition-all ${
+      active
+        ? 'bg-[#2563EB]/15 text-[#60A5FA] font-bold border border-[#2563EB]/40 shadow-sm'
+        : 'text-slate-300 hover:bg-[#1E293B] hover:text-slate-100'
+    }`}
+  >
+    {icon}
+    <span>{label}</span>
+  </button>
+);
+
+type SidebarView = 'command' | 'analytics' | 'progress' | 'dashboard' | 'workspaces' | 'workspace_detail' | 'project_detail' | 'time_tracking' | 'messages' | 'announcements' | 'activity' | 'settings';
 
 interface SidebarProps {
   currentView: SidebarView;
@@ -177,6 +195,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ currentView, onNavigate, isOpe
 
         {/* Top Core Navigation Links — fixed height */}
         <div className="p-2 space-y-0.5 shrink-0">
+          <NavItem active={currentView === 'command'} onClick={() => onNavigate('command')} icon={<Radar className="w-3.5 h-3.5 text-[#3B82F6]" />} label="Command Center" />
           <button
             onClick={() => onNavigate('dashboard')}
             className={`w-full flex items-center justify-between px-2.5 py-1.5 rounded text-xs transition-all ${
@@ -207,6 +226,9 @@ export const Sidebar: React.FC<SidebarProps> = ({ currentView, onNavigate, isOpe
               {workspaces.length}
             </span>
           </button>
+
+          <NavItem active={currentView === 'analytics'} onClick={() => onNavigate('analytics')} icon={<BarChart3 className="w-3.5 h-3.5 text-violet-400" />} label="Analyses" />
+          <NavItem active={currentView === 'progress'} onClick={() => onNavigate('progress')} icon={<Trophy className="w-3.5 h-3.5 text-amber-400" />} label="Missions & progression" />
 
           <button
             onClick={() => onNavigate('time_tracking')}

@@ -6,6 +6,7 @@ import bcrypt from 'bcryptjs';
 import webpush from 'web-push';
 import { initializeApp as initFirebaseAdmin, cert, getApps as getFirebaseApps } from 'firebase-admin/app';
 import { getMessaging } from 'firebase-admin/messaging';
+import { onTaskStatusChange, revokeTaskEvents, onProjectCompleted } from './gamification.ts';
 import {
   User,
   Workspace,
@@ -861,6 +862,7 @@ export async function recalcProjectCompletion(projectId: string): Promise<void> 
 
     if (allDone && !project.completed_at) {
       await db.update(schema.projects).set({ completed_at: new Date() }).where(eq(schema.projects.id, projectId));
+      await onProjectCompleted(projectId, project.workspace_id, project.name);
 
       const recipients = new Set<string>();
       if (project.created_by) {
@@ -1047,131 +1049,148 @@ export async function deleteTag(id: string): Promise<boolean> {
 
 // ----------------- TASKS -----------------
 
-async function populateTaskDetails(t: typeof schema.tasks.$inferSelect): Promise<Task> {
-  const [project] = await db.select().from(schema.projects).where(eq(schema.projects.id, t.project_id)).limit(1);
-  let workspace: typeof schema.workspaces.$inferSelect | undefined;
-  if (project) {
-    const [ws] = await db.select().from(schema.workspaces).where(eq(schema.workspaces.id, project.workspace_id)).limit(1);
-    workspace = ws;
-  }
-
-  const assignee = t.assignee_id ? await getUserById(t.assignee_id) : null;
-  const creator = t.created_by ? await getUserById(t.created_by) : null;
-
-  const subtasksList = await db.select().from(schema.subtasks).where(eq(schema.subtasks.task_id, t.id)).orderBy(asc(schema.subtasks.created_at));
-  const commentsList = await db.select().from(schema.comments).where(eq(schema.comments.task_id, t.id)).orderBy(desc(schema.comments.created_at));
-  const attachmentsList = await db.select().from(schema.attachments).where(eq(schema.attachments.task_id, t.id)).orderBy(desc(schema.attachments.created_at));
-  const timeEntriesList = await db.select().from(schema.timeEntries).where(eq(schema.timeEntries.task_id, t.id)).orderBy(desc(schema.timeEntries.created_at));
-  
-  // Task tags
-  const taskTagsList = await db.select().from(schema.taskTags).where(eq(schema.taskTags.task_id, t.id));
-  const tagIds = taskTagsList.map(tt => tt.tag_id);
-  let tagsList: Tag[] = [];
-  if (tagIds.length > 0) {
-    const rawTags = await db.select().from(schema.tags).where(inArray(schema.tags.id, tagIds));
-    tagsList = rawTags.map(rt => ({
-      id: rt.id,
-      name: rt.name,
-      color: rt.color,
-      workspace_id: rt.workspace_id,
-    }));
-  }
-
-  const allUsers = await getAllUsers();
-  const totalMinutes = timeEntriesList.reduce((sum, te) => sum + te.duration_minutes, 0);
-
-  return {
-    id: t.id,
-    project_id: t.project_id,
-    workspace_id: project?.workspace_id,
-    title: t.title,
-    description: t.description || undefined,
-    status: t.status as TaskStatus,
-    priority: t.priority as TaskPriority,
-    assignee_id: t.assignee_id,
-    start_at: t.start_at ? t.start_at.toISOString() : null,
-    end_at: t.end_at ? t.end_at.toISOString() : null,
-    completed_at: t.completed_at ? t.completed_at.toISOString() : null,
-    stopped_at: t.stopped_at ? t.stopped_at.toISOString() : null,
-    estimated_minutes: t.estimated_minutes ?? null,
-    created_by: t.created_by || '',
-    position: t.position || 0,
-    created_at: t.created_at ? t.created_at.toISOString() : new Date().toISOString(),
-    updated_at: t.created_at ? t.created_at.toISOString() : new Date().toISOString(),
-    assignee: assignee ? {
-      id: assignee.id,
-      email: assignee.email,
-      name: assignee.name,
-      role: assignee.role as 'admin' | 'member',
-      avatar_url: assignee.avatar_url || undefined,
-    } : null,
-    creator: creator ? {
-      id: creator.id,
-      email: creator.email,
-      name: creator.name,
-      role: creator.role as 'admin' | 'member',
-      avatar_url: creator.avatar_url || undefined,
-    } : null,
-    project: project ? {
-      id: project.id,
-      workspace_id: project.workspace_id,
-      name: project.name,
-      description: project.description || undefined,
-      status: project.status as any,
-      start_at: project.start_at ? project.start_at.toISOString() : null,
-      end_at: project.end_at ? project.end_at.toISOString() : null,
-      completed_at: project.completed_at ? project.completed_at.toISOString() : null,
-      stopped_at: project.stopped_at ? project.stopped_at.toISOString() : null,
-      created_by: project.created_by,
-      created_at: project.created_at ? project.created_at.toISOString() : new Date().toISOString(),
-    } : undefined,
-    workspace: workspace ? {
-      id: workspace.id,
-      name: workspace.name,
-      color: workspace.color,
-      icon: workspace.icon,
-      photo_url: workspace.photo_url,
-      created_at: workspace.created_at ? workspace.created_at.toISOString() : new Date().toISOString(),
-    } : undefined,
-    subtasks: subtasksList.map(s => ({
-      id: s.id,
-      task_id: s.task_id,
-      title: s.title,
-      completed: !!s.completed,
-      created_at: s.created_at ? s.created_at.toISOString() : new Date().toISOString(),
-    })),
-    comments: commentsList.map(c => ({
-      id: c.id,
-      task_id: c.task_id,
-      user_id: c.user_id,
-      content: c.content,
-      created_at: c.created_at ? c.created_at.toISOString() : new Date().toISOString(),
-      user: allUsers.find(u => u.id === c.user_id),
-    })),
-    attachments: attachmentsList.map(a => ({
-      id: a.id,
-      task_id: a.task_id,
-      file_url: a.file_url,
-      file_name: a.file_name,
-      file_size: a.file_size || undefined,
-      file_type: a.file_type || undefined,
-      uploaded_by: a.user_id,
-      created_at: a.created_at ? a.created_at.toISOString() : new Date().toISOString(),
-      uploader: allUsers.find(u => u.id === a.user_id),
-    })),
-    time_entries: timeEntriesList.map(te => ({
-      id: te.id,
-      task_id: te.task_id,
-      user_id: te.user_id,
-      duration_minutes: te.duration_minutes,
-      note: te.note || undefined,
-      date: te.date,
-      created_at: te.created_at ? te.created_at.toISOString() : new Date().toISOString(),
-      user: allUsers.find(u => u.id === te.user_id),
-    })),
-    tags: tagsList,
-    total_time_minutes: totalMinutes,
+// Hydrates many tasks with a fixed number of queries (one per related table)
+// instead of ~13 queries per task. Same output shape as before.
+async function populateTasks(rows: typeof schema.tasks.$inferSelect[]): Promise<Task[]> {
+  if (rows.length === 0) return [];
+  const ids = rows.map(t => t.id);
+  const prjIds = [...new Set(rows.map(t => t.project_id))];
+  const [projectsList, subtasksAll, commentsAll, attachmentsAll, timeEntriesAll, taskTagsAll, allUsers] = await Promise.all([
+    db.select().from(schema.projects).where(inArray(schema.projects.id, prjIds)),
+    db.select().from(schema.subtasks).where(inArray(schema.subtasks.task_id, ids)).orderBy(asc(schema.subtasks.created_at)),
+    db.select().from(schema.comments).where(inArray(schema.comments.task_id, ids)).orderBy(desc(schema.comments.created_at)),
+    db.select().from(schema.attachments).where(inArray(schema.attachments.task_id, ids)).orderBy(desc(schema.attachments.created_at)),
+    db.select().from(schema.timeEntries).where(inArray(schema.timeEntries.task_id, ids)).orderBy(desc(schema.timeEntries.created_at)),
+    db.select().from(schema.taskTags).where(inArray(schema.taskTags.task_id, ids)),
+    getAllUsers(),
+  ]);
+  const wsIds = [...new Set(projectsList.map(p => p.workspace_id))];
+  const tagIds = [...new Set(taskTagsAll.map(tt => tt.tag_id))];
+  const [workspacesList, tagsAll] = await Promise.all([
+    wsIds.length ? db.select().from(schema.workspaces).where(inArray(schema.workspaces.id, wsIds)) : Promise.resolve([]),
+    tagIds.length ? db.select().from(schema.tags).where(inArray(schema.tags.id, tagIds)) : Promise.resolve([]),
+  ]);
+  const usersById = new Map(allUsers.map(u => [u.id, u]));
+  const by = <T extends { task_id: string }>(list: T[]) => {
+    const m = new Map<string, T[]>();
+    for (const x of list) { const a = m.get(x.task_id); if (a) a.push(x); else m.set(x.task_id, [x]); }
+    return m;
   };
+  const subBy = by(subtasksAll), comBy = by(commentsAll), attBy = by(attachmentsAll), teBy = by(timeEntriesAll), ttBy = by(taskTagsAll);
+  const lite = (id: string | null) => {
+    const u = id ? usersById.get(id) : undefined;
+    return u ? { id: u.id, email: u.email, name: u.name, role: u.role, avatar_url: u.avatar_url } : null;
+  };
+
+  return rows.map(t => {
+    const project = projectsList.find(p => p.id === t.project_id);
+    const workspace = project ? workspacesList.find(w => w.id === project.workspace_id) : undefined;
+    const subtasksList = subBy.get(t.id) || [];
+    const commentsList = comBy.get(t.id) || [];
+    const attachmentsList = attBy.get(t.id) || [];
+    const timeEntriesList = teBy.get(t.id) || [];
+    const tagsList: Tag[] = (ttBy.get(t.id) || []).map(tt => tagsAll.find(tg => tg.id === tt.tag_id)).filter(Boolean)
+      .map(rt => ({ id: rt!.id, name: rt!.name, color: rt!.color, workspace_id: rt!.workspace_id }));
+    const assignee = lite(t.assignee_id);
+    const creator = lite(t.created_by);
+    const totalMinutes = timeEntriesList.reduce((sum, te) => sum + te.duration_minutes, 0);
+    return {
+      id: t.id,
+      project_id: t.project_id,
+      workspace_id: project?.workspace_id,
+      title: t.title,
+      description: t.description || undefined,
+      status: t.status as TaskStatus,
+      priority: t.priority as TaskPriority,
+      assignee_id: t.assignee_id,
+      start_at: t.start_at ? t.start_at.toISOString() : null,
+      end_at: t.end_at ? t.end_at.toISOString() : null,
+      completed_at: t.completed_at ? t.completed_at.toISOString() : null,
+      stopped_at: t.stopped_at ? t.stopped_at.toISOString() : null,
+      estimated_minutes: t.estimated_minutes ?? null,
+      created_by: t.created_by || '',
+      position: t.position || 0,
+      created_at: t.created_at ? t.created_at.toISOString() : new Date().toISOString(),
+      updated_at: t.created_at ? t.created_at.toISOString() : new Date().toISOString(),
+      assignee: assignee ? {
+        id: assignee.id,
+        email: assignee.email,
+        name: assignee.name,
+        role: assignee.role as 'admin' | 'member',
+        avatar_url: assignee.avatar_url || undefined,
+      } : null,
+      creator: creator ? {
+        id: creator.id,
+        email: creator.email,
+        name: creator.name,
+        role: creator.role as 'admin' | 'member',
+        avatar_url: creator.avatar_url || undefined,
+      } : null,
+      project: project ? {
+        id: project.id,
+        workspace_id: project.workspace_id,
+        name: project.name,
+        description: project.description || undefined,
+        status: project.status as any,
+        start_at: project.start_at ? project.start_at.toISOString() : null,
+        end_at: project.end_at ? project.end_at.toISOString() : null,
+        completed_at: project.completed_at ? project.completed_at.toISOString() : null,
+        stopped_at: project.stopped_at ? project.stopped_at.toISOString() : null,
+        created_by: project.created_by,
+        created_at: project.created_at ? project.created_at.toISOString() : new Date().toISOString(),
+      } : undefined,
+      workspace: workspace ? {
+        id: workspace.id,
+        name: workspace.name,
+        color: workspace.color,
+        icon: workspace.icon,
+        photo_url: workspace.photo_url,
+        created_at: workspace.created_at ? workspace.created_at.toISOString() : new Date().toISOString(),
+      } : undefined,
+      subtasks: subtasksList.map(s => ({
+        id: s.id,
+        task_id: s.task_id,
+        title: s.title,
+        completed: !!s.completed,
+        created_at: s.created_at ? s.created_at.toISOString() : new Date().toISOString(),
+      })),
+      comments: commentsList.map(c => ({
+        id: c.id,
+        task_id: c.task_id,
+        user_id: c.user_id,
+        content: c.content,
+        created_at: c.created_at ? c.created_at.toISOString() : new Date().toISOString(),
+        user: usersById.get(c.user_id),
+      })),
+      attachments: attachmentsList.map(a => ({
+        id: a.id,
+        task_id: a.task_id,
+        file_url: a.file_url,
+        file_name: a.file_name,
+        file_size: a.file_size || undefined,
+        file_type: a.file_type || undefined,
+        uploaded_by: a.user_id,
+        created_at: a.created_at ? a.created_at.toISOString() : new Date().toISOString(),
+        uploader: usersById.get(a.user_id),
+      })),
+      time_entries: timeEntriesList.map(te => ({
+        id: te.id,
+        task_id: te.task_id,
+        user_id: te.user_id,
+        duration_minutes: te.duration_minutes,
+        note: te.note || undefined,
+        date: te.date,
+        created_at: te.created_at ? te.created_at.toISOString() : new Date().toISOString(),
+        user: usersById.get(te.user_id),
+      })),
+      tags: tagsList,
+      total_time_minutes: totalMinutes,
+    };
+  });
+}
+
+async function populateTaskDetails(t: typeof schema.tasks.$inferSelect): Promise<Task> {
+  return (await populateTasks([t]))[0];
 }
 
 export async function getProjectTasks(projectId: string): Promise<Task[]> {
@@ -1180,8 +1199,7 @@ export async function getProjectTasks(projectId: string): Promise<Task[]> {
       .where(eq(schema.tasks.project_id, projectId))
       .orderBy(asc(schema.tasks.position), desc(schema.tasks.created_at));
 
-    const tasks = await Promise.all(rawTasks.map(t => populateTaskDetails(t)));
-    return tasks;
+    return populateTasks(rawTasks);
   } catch (error) {
     console.error('Failed to get project tasks:', error);
     throw new Error('Database query failed. Please try again later.', { cause: error });
@@ -1207,7 +1225,7 @@ export async function getUserDashboardTasks(userId: string, isGlobalAdmin: boole
         .orderBy(desc(schema.tasks.created_at));
     }
 
-    return Promise.all(rawTasks.map(t => populateTaskDetails(t)));
+    return populateTasks(rawTasks);
   } catch (error) {
     console.error('Failed to get dashboard tasks:', error);
     throw new Error('Database query failed. Please try again later.', { cause: error });
@@ -1259,6 +1277,7 @@ export async function createTask(data: {
       start_at: autoStartAt,
       end_at: data.end_at ? new Date(data.end_at) : null,
       completed_at: status === 'termine' ? new Date() : null,
+      blocked_at: status === 'bloque' ? new Date() : null,
       estimated_minutes: data.estimated_minutes ?? null,
       position: maxPosition + 1,
       created_by: data.created_by,
@@ -1297,7 +1316,7 @@ export async function updateTask(id: string, updates: Partial<{
   estimated_minutes: number | null;
   tag_ids: string[];
   position: number;
-}>): Promise<Task | null> {
+}>, actorId: string | null = null): Promise<Task | null> {
   try {
     const [existingTask] = await db.select().from(schema.tasks).where(eq(schema.tasks.id, id)).limit(1);
     if (!existingTask) return null;
@@ -1318,6 +1337,7 @@ export async function updateTask(id: string, updates: Partial<{
       if (updates.status === 'en_cours' && existingTask.status !== 'en_cours' && !existingTask.start_at && updates.start_at === undefined) {
         setPayload.start_at = new Date();
       }
+      Object.assign(setPayload, blockedAtPatch(existingTask.status, updates.status));
     }
     if (updates.priority !== undefined) setPayload.priority = updates.priority;
     if (updates.assignee_id !== undefined) setPayload.assignee_id = updates.assignee_id;
@@ -1343,6 +1363,7 @@ export async function updateTask(id: string, updates: Partial<{
     }
 
     if (updates.status !== undefined) {
+      await onTaskStatusChange(existingTask, updates.status, actorId);
       await recalcProjectCompletion(existingTask.project_id);
     }
 
@@ -1353,7 +1374,14 @@ export async function updateTask(id: string, updates: Partial<{
   }
 }
 
-export async function reorderTasks(items: Array<{ id: string; status: TaskStatus; position: number }>): Promise<void> {
+// blocked_at follows the 'bloque' status (used for "bloquée depuis" and blocker rewards).
+function blockedAtPatch(from: string, to: string): { blocked_at?: Date | null } {
+  if (to === 'bloque' && from !== 'bloque') return { blocked_at: new Date() };
+  if (to !== 'bloque' && from === 'bloque') return { blocked_at: null };
+  return {};
+}
+
+export async function reorderTasks(items: Array<{ id: string; status: TaskStatus; position: number }>, actorId: string | null = null): Promise<void> {
   try {
     const affectedProjectIds = new Set<string>();
     for (const item of items) {
@@ -1369,8 +1397,10 @@ export async function reorderTasks(items: Array<{ id: string; status: TaskStatus
       if (item.status === 'en_cours' && existingTask.status !== 'en_cours' && !existingTask.start_at) {
         setPayload.start_at = new Date();
       }
+      Object.assign(setPayload, blockedAtPatch(existingTask.status, item.status));
 
       await db.update(schema.tasks).set(setPayload).where(eq(schema.tasks.id, item.id));
+      await onTaskStatusChange(existingTask, item.status, actorId);
       affectedProjectIds.add(existingTask.project_id);
     }
 
@@ -1386,6 +1416,7 @@ export async function reorderTasks(items: Array<{ id: string; status: TaskStatus
 export async function deleteTask(id: string): Promise<boolean> {
   try {
     const [existingTask] = await db.select().from(schema.tasks).where(eq(schema.tasks.id, id)).limit(1);
+    await revokeTaskEvents(id, 'Tâche supprimée (annulée)');
     await db.delete(schema.tasks).where(eq(schema.tasks.id, id));
     if (existingTask) {
       await recalcProjectCompletion(existingTask.project_id);
@@ -2359,7 +2390,7 @@ export async function getUnreadNotificationCount(userId: string): Promise<number
 export async function markNotificationRead(id: string, userId: string): Promise<boolean> {
   try {
     const result = await db.update(schema.notifications)
-      .set({ is_read: true })
+      .set({ is_read: true, read_at: sql`coalesce(${schema.notifications.read_at}, now())` })
       .where(and(eq(schema.notifications.id, id), eq(schema.notifications.user_id, userId)))
       .returning();
     return result.length > 0;
@@ -2372,7 +2403,7 @@ export async function markNotificationRead(id: string, userId: string): Promise<
 export async function markAllNotificationsRead(userId: string): Promise<void> {
   try {
     await db.update(schema.notifications)
-      .set({ is_read: true })
+      .set({ is_read: true, read_at: new Date() })
       .where(and(eq(schema.notifications.user_id, userId), eq(schema.notifications.is_read, false)));
   } catch (error) {
     console.error('Failed to mark all notifications read:', error);
@@ -2505,4 +2536,98 @@ export async function getActivityLogs(opts: { q?: string; userId?: string; limit
     details: r.details as ActivityLog['details'],
     created_at: r.created_at ? r.created_at.toISOString() : new Date().toISOString(),
   }));
+}
+
+// ==================== COMMAND CENTER SCOPE ====================
+// Compact rows for every workspace the user can access; all KPIs, charts and
+// drill-downs are computed from this one payload (src/lib/insights.ts), so
+// they can't disagree with each other. ponytail: one payload of all tasks,
+// fine for thousands of tasks; paginate/aggregate in SQL past ~20k.
+
+export async function getAccessibleWorkspaceIds(userId: string, isGlobalAdmin: boolean): Promise<{ id: string; role: string }[]> {
+  if (isGlobalAdmin) {
+    const rows = await db.select({ id: schema.workspaces.id }).from(schema.workspaces);
+    return rows.map(r => ({ id: r.id, role: 'admin' }));
+  }
+  const rows = await db.select({ id: schema.workspaceMembers.workspace_id, role: schema.workspaceMembers.role })
+    .from(schema.workspaceMembers).where(eq(schema.workspaceMembers.user_id, userId));
+  return rows;
+}
+
+const iso = (d: Date | null) => (d ? d.toISOString() : null);
+
+export async function getInsightsScope(userId: string, isGlobalAdmin: boolean) {
+  const access = await getAccessibleWorkspaceIds(userId, isGlobalAdmin);
+  const wsIds = access.map(a => a.id);
+  const empty = { generated_at: new Date().toISOString(), workspaces: [], projects: [], tasks: [], users: [], notifications: [] };
+  if (!wsIds.length) return empty;
+
+  const [wsRows, prjRows] = await Promise.all([
+    db.select({ id: schema.workspaces.id, name: schema.workspaces.name, color: schema.workspaces.color })
+      .from(schema.workspaces).where(inArray(schema.workspaces.id, wsIds)),
+    db.select().from(schema.projects).where(inArray(schema.projects.workspace_id, wsIds)),
+  ]);
+  const prjIds = prjRows.map(p => p.id);
+  const wsOfProject = new Map(prjRows.map(p => [p.id, p.workspace_id]));
+  const taskRows = prjIds.length ? await db.select({
+    id: schema.tasks.id, title: schema.tasks.title, status: schema.tasks.status, priority: schema.tasks.priority,
+    project_id: schema.tasks.project_id, assignee_id: schema.tasks.assignee_id, created_by: schema.tasks.created_by,
+    created_at: schema.tasks.created_at, start_at: schema.tasks.start_at, end_at: schema.tasks.end_at,
+    completed_at: schema.tasks.completed_at, blocked_at: schema.tasks.blocked_at, stopped_at: schema.tasks.stopped_at,
+    estimated_minutes: schema.tasks.estimated_minutes,
+  }).from(schema.tasks).where(inArray(schema.tasks.project_id, prjIds)) : [];
+
+  const memberRows = await db.selectDistinct({ id: schema.users.id, name: schema.users.name, avatar_url: schema.users.avatar_url })
+    .from(schema.users)
+    .innerJoin(schema.workspaceMembers, eq(schema.workspaceMembers.user_id, schema.users.id))
+    .where(inArray(schema.workspaceMembers.workspace_id, wsIds));
+  const known = new Set(memberRows.map(u => u.id));
+  const missing = [...new Set(taskRows.flatMap(t => [t.assignee_id, t.created_by]).filter(id => id && !known.has(id)))] as string[];
+  const extraUsers = missing.length
+    ? await db.select({ id: schema.users.id, name: schema.users.name, avatar_url: schema.users.avatar_url }).from(schema.users).where(inArray(schema.users.id, missing))
+    : [];
+
+  // Alert analytics: own alerts for members, all alerts for global admins.
+  const notifRows = await db.select({
+    type: schema.notifications.type, created_at: schema.notifications.created_at,
+    is_read: schema.notifications.is_read, read_at: schema.notifications.read_at,
+  }).from(schema.notifications)
+    .where(and(
+      isGlobalAdmin ? sql`true` : eq(schema.notifications.user_id, userId),
+      sql`${schema.notifications.created_at} >= now() - interval '180 days'`,
+    ));
+
+  return {
+    generated_at: new Date().toISOString(),
+    workspaces: wsRows.map(w => ({ ...w, my_role: (access.find(a => a.id === w.id)?.role || 'member') as 'admin' | 'member' })),
+    projects: prjRows.map(p => ({
+      id: p.id, name: p.name, workspace_id: p.workspace_id, created_by: p.created_by,
+      start_at: iso(p.start_at), end_at: iso(p.end_at), completed_at: iso(p.completed_at), stopped_at: iso(p.stopped_at),
+      created_at: iso(p.created_at) || new Date(0).toISOString(),
+    })),
+    tasks: taskRows.map(t => ({
+      ...t, workspace_id: wsOfProject.get(t.project_id)!,
+      created_at: iso(t.created_at) || new Date(0).toISOString(), start_at: iso(t.start_at), end_at: iso(t.end_at),
+      completed_at: iso(t.completed_at), blocked_at: iso(t.blocked_at), stopped_at: iso(t.stopped_at),
+    })),
+    users: [...memberRows, ...extraUsers],
+    notifications: notifRows.map(n => ({ type: n.type, created_at: iso(n.created_at)!, is_read: n.is_read, read_at: iso(n.read_at) })),
+  };
+}
+
+export async function searchEverything(userId: string, isGlobalAdmin: boolean, q: string) {
+  const wsIds = (await getAccessibleWorkspaceIds(userId, isGlobalAdmin)).map(a => a.id);
+  if (!wsIds.length || !q.trim()) return { tasks: [], projects: [] };
+  const pattern = `%${q.trim().replace(/[%_\\]/g, m => `\\${m}`)}%`;
+  const [tasks, projects] = await Promise.all([
+    db.select({ id: schema.tasks.id, title: schema.tasks.title, status: schema.tasks.status, project_id: schema.projects.id, project_name: schema.projects.name, workspace_id: schema.projects.workspace_id })
+      .from(schema.tasks).innerJoin(schema.projects, eq(schema.projects.id, schema.tasks.project_id))
+      .where(and(inArray(schema.projects.workspace_id, wsIds), ilike(schema.tasks.title, pattern)))
+      .limit(8),
+    db.select({ id: schema.projects.id, name: schema.projects.name, workspace_id: schema.projects.workspace_id })
+      .from(schema.projects)
+      .where(and(inArray(schema.projects.workspace_id, wsIds), ilike(schema.projects.name, pattern)))
+      .limit(6),
+  ]);
+  return { tasks, projects };
 }

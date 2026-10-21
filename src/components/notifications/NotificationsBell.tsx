@@ -22,6 +22,7 @@ import {
   PartyPopper,
   BookOpen,
   Megaphone,
+  Award,
 } from 'lucide-react';
 
 const TYPE_META: Record<AppNotification['type'], { icon: React.ReactNode; color: string }> = {
@@ -36,6 +37,7 @@ const TYPE_META: Record<AppNotification['type'], { icon: React.ReactNode; color:
   project_completed: { icon: <PartyPopper className="w-3.5 h-3.5" />, color: 'text-emerald-400' },
   project_playbook_reminder: { icon: <BookOpen className="w-3.5 h-3.5" />, color: 'text-amber-400' },
   announcement: { icon: <Megaphone className="w-3.5 h-3.5" />, color: 'text-amber-400' },
+  kudos: { icon: <Award className="w-3.5 h-3.5" />, color: 'text-violet-400' },
 };
 
 const ANNOUNCED_IDS_KEY = 'axetask_announced_notification_ids';
@@ -78,6 +80,12 @@ export const NotificationsBell: React.FC<NotificationsBellProps> = ({ onOpenWork
   const { notify } = useToast();
 
   const [isOpen, setIsOpen] = useState(false);
+  // Lets the command palette open the alert center.
+  useEffect(() => {
+    const open = () => setIsOpen(true);
+    window.addEventListener('axetask:open-notifications', open);
+    return () => window.removeEventListener('axetask:open-notifications', open);
+  }, []);
   const [notifications, setNotifications] = useState<AppNotification[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
   const [loading, setLoading] = useState(true);

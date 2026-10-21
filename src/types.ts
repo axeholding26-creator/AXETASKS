@@ -248,7 +248,8 @@ export type NotificationType =
   | 'workspace_role_changed'
   | 'project_completed'
   | 'project_playbook_reminder'
-  | 'announcement';
+  | 'announcement'
+  | 'kudos';
 
 export interface ActivityLog {
   id: string;

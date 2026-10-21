@@ -30,3 +30,29 @@
   background: #2563EB;
 }
 
+
+/* Shared form field (Command Center / Progression forms) */
+@layer components {
+  .field {
+    background-color: #0B1120;
+    border: 1px solid #1E293B;
+    border-radius: 0.25rem;
+    padding: 0.25rem 0.5rem;
+    color: #E2E8F0;
+    font-size: 11px;
+  }
+  .field:focus {
+    outline: none;
+    border-color: rgb(37 99 235 / 0.6);
+  }
+}
+
+/* Respect the OS "reduce motion" setting everywhere */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}

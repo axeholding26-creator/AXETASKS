@@ -20,6 +20,7 @@ import {
   Announcement,
   ActivityLog
 } from '../types';
+import type { Scope } from './insights';
 
 const TOKEN_KEY = 'axetask_jwt_token';
 
@@ -412,4 +413,61 @@ export const api = {
 
   clearAllNotifications: () =>
     fetchWithAuth<{ success: boolean }>('/api/notifications', { method: 'DELETE' }),
+
+  // Command Center / AXP
+  getInsightsScope: () => fetchWithAuth<Scope>('/api/insights/scope'),
+
+  search: (q: string) =>
+    fetchWithAuth<SearchResults>(`/api/search?q=${encodeURIComponent(q)}`),
+
+  getXpSummary: () => fetchWithAuth<XpSummary>('/api/xp/me'),
+
+  getLeaderboards: (days: number) => fetchWithAuth<Leaderboards>(`/api/xp/leaderboard?days=${days}`),
+
+  setLeaderboardVisibility: (show_in_leaderboard: boolean) =>
+    fetchWithAuth<{ success: boolean }>('/api/xp/privacy', { method: 'PATCH', body: JSON.stringify({ show_in_leaderboard }) }),
+
+  giveKudos: (to_user_id: string, message: string, task_id?: string | null) =>
+    fetchWithAuth<unknown>('/api/xp/kudos', { method: 'POST', body: JSON.stringify({ to_user_id, message, task_id }) }),
+
+  addXpCorrection: (user_id: string, points: number, reason: string) =>
+    fetchWithAuth<unknown>('/api/xp/corrections', { method: 'POST', body: JSON.stringify({ user_id, points, reason }) }),
+
+  getChallenges: () => fetchWithAuth<Challenge[]>('/api/challenges'),
+
+  createChallenge: (data: { workspace_id: string; title: string; metric: string; target: number; reward?: string; start_at: string; end_at: string }) =>
+    fetchWithAuth<unknown>('/api/challenges', { method: 'POST', body: JSON.stringify(data) }),
+
+  deleteChallenge: (id: string) =>
+    fetchWithAuth<{ success: boolean }>(`/api/challenges/${id}`, { method: 'DELETE' }),
 };
+
+export interface SearchResults {
+  tasks: { id: string; title: string; status: string; project_id: string; project_name: string; workspace_id: string }[];
+  projects: { id: string; name: string; workspace_id: string }[];
+}
+
+export interface XpSummary {
+  total: number;
+  level: { level: number; name: string; min: number; next: { level: number; name: string; min: number } | null; progress: number; toNext: number };
+  streak: { current: number; best: number };
+  badges: { id: string; name: string; rule: string; earned: boolean; progress: [number, number] }[];
+  weekly: { key: string; value: number }[];
+  period: { last30: number; prev30: number };
+  today: { blockersResolved: number; earned: number };
+  show_in_leaderboard: boolean;
+  validated_this_week: number;
+  events: { id: string; kind: string; points: number; reason: string | null; task_id: string | null; revoked: boolean; revoked_reason: string | null; created_at: string }[];
+}
+
+export interface Leaderboards {
+  teams: { id: string; name: string; color: string; xp: number; validated: number; blockers: number; members: number }[];
+  people: { id: string; name: string; avatar_url: string | null; xp: number; validated: number; blockers: number }[];
+  recognitions: { id: string; reason: string; created_at: string; task_id: string | null; task_title: string | null; to_id: string; to_name: string; from_id: string | null; from_name: string | null }[];
+}
+
+export interface Challenge {
+  id: string; workspace_id: string; title: string; metric: string; metric_label: string; unit: string; target: number;
+  baseline: number | null; reward: string | null; start_at: string; end_at: string; value: number; detail: string;
+  success: boolean; state: 'a_venir' | 'en_cours' | 'termine';
+}

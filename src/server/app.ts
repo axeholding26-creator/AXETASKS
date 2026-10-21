@@ -2,6 +2,7 @@ import express, { Request, Response, NextFunction } from 'express';
 import crypto from 'crypto';
 import cors from 'cors';
 import * as db from '../db/queries.ts';
+import * as gamification from '../db/gamification.ts';
 import { User } from '../types.ts';
 
 // Resolved lazily (not at module load time) so a missing JWT_SECRET surfaces
@@ -151,6 +152,11 @@ const AUDIT_ACTIONS: [string, string, string][] = [
   ['POST', '/api/conversations/:id/messages', 'Message envoyé'],
   ['POST', '/api/announcements', 'Annonce publiée'],
   ['DELETE', '/api/announcements/:id', 'Annonce supprimée'],
+  ['POST', '/api/xp/kudos', 'Reconnaissance envoyée'],
+  ['POST', '/api/xp/corrections', 'Correction AXP'],
+  ['PATCH', '/api/xp/privacy', 'Visibilité classement modifiée'],
+  ['POST', '/api/challenges', 'Défi créé'],
+  ['DELETE', '/api/challenges/:id', 'Défi supprimé'],
 ];
 const AUDIT_ROUTES = AUDIT_ACTIONS.map(([method, pattern, label]) => ({
   method,
@@ -1027,7 +1033,7 @@ export function createApp() {
         estimated_minutes,
         tag_ids,
         position,
-      });
+      }, req.user!.id);
 
       const assigneeChanged = assignee_id !== undefined && assignee_id !== task.assignee_id;
       if (assigneeChanged && assignee_id && task.workspace_id) {
@@ -1088,7 +1094,7 @@ export function createApp() {
           return res.status(403).json({ error: 'Accès refusé à une des tâches.' });
         }
       }
-      await db.reorderTasks(items);
+      await db.reorderTasks(items, req.user!.id);
       res.json({ success: true });
     } catch (err: any) {
       res.status(500).json({ error: err.message || 'Erreur lors du réordonnancement.' });
@@ -1599,6 +1605,144 @@ export function createApp() {
   // Daily deadline scan — triggered by Vercel Cron (see vercel.json). Not
   // behind authMiddleware (Vercel's cron invoker doesn't carry a user JWT);
   // gated instead by CRON_SECRET when that env var is set.
+  // ==================== COMMAND CENTER / AXP ====================
+
+  app.get('/api/insights/scope', authMiddleware, async (req: AuthenticatedRequest, res) => {
+    try {
+      res.json(await db.getInsightsScope(req.user!.id, req.user!.role === 'admin'));
+    } catch (err: any) {
+      res.status(500).json({ error: err.message || 'Erreur lors du chargement du centre de contrôle.' });
+    }
+  });
+
+  app.get('/api/search', authMiddleware, async (req: AuthenticatedRequest, res) => {
+    try {
+      const q = String(req.query.q || '').slice(0, 100);
+      res.json(await db.searchEverything(req.user!.id, req.user!.role === 'admin', q));
+    } catch (err: any) {
+      res.status(500).json({ error: err.message || 'Erreur de recherche.' });
+    }
+  });
+
+  app.get('/api/xp/me', authMiddleware, async (req: AuthenticatedRequest, res) => {
+    try {
+      const [summary, validatedThisWeek] = await Promise.all([
+        gamification.getXpSummary(req.user!.id),
+        gamification.validationsThisWeek(req.user!.id),
+      ]);
+      res.json({ ...summary, validated_this_week: validatedThisWeek });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message || 'Erreur lors du chargement de la progression.' });
+    }
+  });
+
+  app.get('/api/xp/leaderboard', authMiddleware, async (req: AuthenticatedRequest, res) => {
+    try {
+      const days = [7, 30, 90].includes(Number(req.query.days)) ? Number(req.query.days) : 30;
+      const isAdmin = req.user!.role === 'admin';
+      const wsIds = (await db.getAccessibleWorkspaceIds(req.user!.id, isAdmin)).map(w => w.id);
+      const [boards, recognitions] = await Promise.all([
+        gamification.getLeaderboards(req.user!.id, isAdmin, days, wsIds),
+        gamification.getRecognitions(wsIds, isAdmin, req.user!.id),
+      ]);
+      res.json({ ...boards, recognitions });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message || 'Erreur lors du chargement des classements.' });
+    }
+  });
+
+  app.patch('/api/xp/privacy', authMiddleware, async (req: AuthenticatedRequest, res) => {
+    try {
+      await gamification.setLeaderboardVisibility(req.user!.id, !!req.body?.show_in_leaderboard);
+      res.json({ success: true });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message || 'Erreur lors de la mise à jour.' });
+    }
+  });
+
+  app.post('/api/xp/kudos', authMiddleware, async (req: AuthenticatedRequest, res) => {
+    try {
+      const { to_user_id, message, task_id } = req.body || {};
+      const text = typeof message === 'string' ? message.trim() : '';
+      if (!to_user_id || to_user_id === req.user!.id) return res.status(400).json({ error: 'Choisissez un collègue (pas vous-même).' });
+      if (text.length < 5 || text.length > 300) return res.status(400).json({ error: 'Expliquez la contribution (5 à 300 caractères).' });
+      if (req.user!.role !== 'admin' && !(await gamification.shareWorkspace(req.user!.id, to_user_id))) {
+        return res.status(403).json({ error: 'Vous ne partagez aucun espace avec cette personne.' });
+      }
+      if (task_id) {
+        const task = await db.getTaskById(task_id);
+        if (!task || (task.workspace_id && !(await db.userCanAccessWorkspace(req.user!.id, task.workspace_id, req.user!.role === 'admin')))) {
+          return res.status(403).json({ error: 'Tâche inaccessible.' });
+        }
+      }
+      res.locals.audit = { label: text };
+      const event = await gamification.giveKudos(req.user!.id, to_user_id, text, task_id || null);
+      await db.createNotification({
+        user_id: to_user_id, type: 'kudos', title: 'Reconnaissance reçue',
+        message: `${req.user!.name} : « ${text} »`, task_id: task_id || undefined,
+      }).catch(err => console.error('Failed to create kudos notification:', err));
+      res.status(201).json(event);
+    } catch (err: any) {
+      res.status(400).json({ error: err.message || 'Reconnaissance impossible.' });
+    }
+  });
+
+  app.post('/api/xp/corrections', authMiddleware, async (req: AuthenticatedRequest, res) => {
+    if (req.user!.role !== 'admin') return res.status(403).json({ error: 'Réservé aux administrateurs.' });
+    const { user_id, points, reason } = req.body || {};
+    const n = Number(points);
+    if (!user_id || !Number.isInteger(n) || n === 0 || Math.abs(n) > 500) return res.status(400).json({ error: 'Points invalides (entier non nul, ±500 max).' });
+    if (typeof reason !== 'string' || reason.trim().length < 5) return res.status(400).json({ error: 'Motif obligatoire (5 caractères min).' });
+    try {
+      res.locals.audit = { label: `${n > 0 ? '+' : ''}${n} AXP — ${reason.trim()}` };
+      res.status(201).json(await gamification.addCorrection(req.user!.id, user_id, n, reason.trim()));
+    } catch (err: any) {
+      res.status(500).json({ error: err.message || 'Correction impossible.' });
+    }
+  });
+
+  app.get('/api/challenges', authMiddleware, async (req: AuthenticatedRequest, res) => {
+    try {
+      const wsIds = (await db.getAccessibleWorkspaceIds(req.user!.id, req.user!.role === 'admin')).map(w => w.id);
+      res.json(await gamification.getChallenges(wsIds));
+    } catch (err: any) {
+      res.status(500).json({ error: err.message || 'Erreur lors du chargement des défis.' });
+    }
+  });
+
+  app.post('/api/challenges', authMiddleware, async (req: AuthenticatedRequest, res) => {
+    try {
+      const { workspace_id, title, metric, target, reward, start_at, end_at } = req.body || {};
+      if (!workspace_id || !(await db.userIsWorkspaceAdmin(req.user!.id, workspace_id, req.user!.role === 'admin'))) {
+        return res.status(403).json({ error: "Seuls les administrateurs de l'espace créent des défis." });
+      }
+      const t = Number(target);
+      const pct = metric === 'overdue_reduction' || metric === 'on_time_rate';
+      if (!gamification.CHALLENGE_METRICS[metric]) return res.status(400).json({ error: 'Indicateur inconnu.' });
+      if (!Number.isInteger(t) || t <= 0 || (pct && t > 100) || t > 1000) return res.status(400).json({ error: 'Objectif invalide.' });
+      const start = new Date(start_at), end = new Date(end_at);
+      if (!title?.trim() || isNaN(start.getTime()) || isNaN(end.getTime()) || end <= start) return res.status(400).json({ error: 'Titre et période valides requis.' });
+      res.status(201).json(await gamification.createChallenge({
+        workspace_id, title: title.trim(), metric, target: t, reward: reward?.trim() || undefined, start_at: start, end_at: end, created_by: req.user!.id,
+      }));
+    } catch (err: any) {
+      res.status(500).json({ error: err.message || 'Création du défi impossible.' });
+    }
+  });
+
+  app.delete('/api/challenges/:id', authMiddleware, async (req: AuthenticatedRequest, res) => {
+    try {
+      const c = await gamification.getChallenge(req.params.id);
+      if (!c) return res.status(404).json({ error: 'Défi introuvable.' });
+      if (!(await db.userIsWorkspaceAdmin(req.user!.id, c.workspace_id, req.user!.role === 'admin'))) return res.status(403).json({ error: 'Accès refusé.' });
+      res.locals.audit = { label: c.title };
+      await gamification.deleteChallenge(c.id);
+      res.json({ success: true });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message || 'Suppression impossible.' });
+    }
+  });
+
   app.get('/api/cron/due-reminders', async (req: Request, res: Response) => {
     const cronSecret = process.env.CRON_SECRET;
     if (cronSecret) {

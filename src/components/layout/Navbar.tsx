@@ -5,6 +5,7 @@ import { Avatar } from '../common/Avatar';
 import { RoleBadge } from '../common/Badge';
 import { BrandLogo } from '../common/BrandLogo';
 import { NotificationsBell } from '../notifications/NotificationsBell';
+import { CommandPalette, PaletteView } from './CommandPalette';
 import { api } from '../../lib/api';
 import { User, Task } from '../../types';
 import {
@@ -29,6 +30,7 @@ interface NavbarProps {
   onOpenDashboard: () => void;
   onOpenWorkspaces: () => void;
   onOpenAnnouncements: () => void;
+  onNavigate: (view: PaletteView) => void;
   onMenuToggle?: () => void;
 }
 
@@ -38,6 +40,7 @@ export const Navbar: React.FC<NavbarProps> = ({
   onOpenDashboard,
   onOpenWorkspaces,
   onOpenAnnouncements,
+  onNavigate,
   onMenuToggle,
 }) => {
   const { user, logout } = useAuth();
@@ -53,15 +56,11 @@ export const Navbar: React.FC<NavbarProps> = ({
   const [isWorkspaceDropdownOpen, setIsWorkspaceDropdownOpen] = useState(false);
   const [isUserDropdownOpen, setIsUserDropdownOpen] = useState(false);
 
-  // Quick Search
-  const [searchQuery, setSearchQuery] = useState('');
+  // Command palette (Ctrl/⌘+K)
   const [isSearchOpen, setIsSearchOpen] = useState(false);
-  const [searchResults, setSearchResults] = useState<Task[]>([]);
-  const [isSearching, setIsSearching] = useState(false);
 
   const wsDropdownRef = useRef<HTMLDivElement>(null);
   const userDropdownRef = useRef<HTMLDivElement>(null);
-  const searchInputRef = useRef<HTMLInputElement>(null);
 
   // Close dropdowns on click outside
   useEffect(() => {
@@ -88,34 +87,6 @@ export const Navbar: React.FC<NavbarProps> = ({
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, []);
-
-  // Handle Search Query
-  useEffect(() => {
-    if (!searchQuery.trim()) {
-      setSearchResults([]);
-      return;
-    }
-    setIsSearching(true);
-    const timer = setTimeout(async () => {
-      try {
-        const tasks = await api.getDashboardTasks();
-        const q = searchQuery.toLowerCase();
-        const filtered = tasks.filter(t => 
-          t.title.toLowerCase().includes(q) || 
-          t.description?.toLowerCase().includes(q) ||
-          t.project?.name.toLowerCase().includes(q) ||
-          t.workspace?.name.toLowerCase().includes(q)
-        );
-        setSearchResults(filtered);
-      } catch (err) {
-        console.error(err);
-      } finally {
-        setIsSearching(false);
-      }
-    }, 250);
-
-    return () => clearTimeout(timer);
-  }, [searchQuery]);
 
   return (
     <header className="fixed top-0 w-full h-14 border-b border-[#1E293B] bg-[#0B1120]/95 backdrop-blur-md z-30 md:z-[60] px-4 lg:px-6 flex items-center justify-between gap-4">
@@ -236,7 +207,7 @@ export const Navbar: React.FC<NavbarProps> = ({
         >
           <div className="flex items-center gap-2 min-w-0">
             <Search className="w-3.5 h-3.5 text-slate-500 shrink-0" />
-            <span className="text-slate-400 text-xs truncate">Rechercher...</span>
+            <span className="text-slate-400 text-xs truncate">Rechercher ou agir…</span>
           </div>
           <kbd className="hidden md:inline-flex px-1.5 py-0.5 rounded bg-[#1E293B] text-[10px] text-slate-400 border border-[#334155] shrink-0">
             ⌘K
@@ -335,80 +306,7 @@ export const Navbar: React.FC<NavbarProps> = ({
         </div>
       </div>
 
-      {/* Global Search Modal */}
-      {isSearchOpen && (
-        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-[100] flex items-start justify-center pt-20 p-4 animate-in fade-in duration-100">
-          <div className="bg-[#0F172A] border border-[#1E293B] rounded-lg w-full max-w-2xl overflow-hidden shadow-2xl font-mono">
-            <div className="flex items-center gap-3 px-4 py-2.5 border-b border-[#1E293B] bg-[#0B1120]">
-              <Search className="w-4 h-4 text-[#3B82F6]" />
-              <input
-                ref={searchInputRef}
-                autoFocus
-                value={searchQuery}
-                onChange={e => setSearchQuery(e.target.value)}
-                placeholder="Rechercher une tâche, description, projet..."
-                className="w-full bg-transparent text-xs text-slate-100 placeholder-slate-500 focus:outline-none"
-              />
-              <button
-                onClick={() => setIsSearchOpen(false)}
-                className="p-1 text-slate-400 hover:text-slate-200 rounded hover:bg-[#1E293B]"
-              >
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-
-            <div className="max-h-96 overflow-y-auto p-2 divide-y divide-[#1E293B]">
-              {isSearching && (
-                <div className="text-center py-8 text-xs text-slate-400">
-                  Recherche en cours...
-                </div>
-              )}
-
-              {!isSearching && searchQuery && searchResults.length === 0 && (
-                <div className="text-center py-8 text-xs text-slate-400">
-                  Aucun résultat trouvé pour "{searchQuery}".
-                </div>
-              )}
-
-              {!isSearching && !searchQuery && (
-                <div className="text-center py-8 text-xs text-slate-500">
-                  Tapez un mot-clé pour rechercher dans tous vos espaces de travail.
-                </div>
-              )}
-
-              {!isSearching && searchResults.map(task => (
-                <button
-                  key={task.id}
-                  onClick={() => {
-                    setSelectedTaskId(task.id);
-                    setIsSearchOpen(false);
-                  }}
-                  className="w-full text-left p-2.5 rounded hover:bg-[#1E293B] transition-colors flex items-center justify-between gap-3 group"
-                >
-                  <div className="min-w-0">
-                    <p className="text-xs font-semibold text-slate-200 group-hover:text-[#60A5FA] transition-colors truncate">
-                      {task.title}
-                    </p>
-                    <div className="flex items-center gap-2 mt-0.5 text-[11px] text-slate-400">
-                      <span className="flex items-center gap-1 font-medium text-[#3B82F6]">
-                        <FolderGit2 className="w-3 h-3" />
-                        {task.project?.name || 'Projet'}
-                      </span>
-                      <span>•</span>
-                      <span>{task.workspace?.name}</span>
-                    </div>
-                  </div>
-                  <div className="shrink-0 flex items-center gap-2">
-                    <span className="text-[10px] px-1.5 py-0.5 rounded bg-[#1E293B] text-slate-300 border border-[#334155]">
-                      {task.status.replace('_', ' ')}
-                    </span>
-                  </div>
-                </button>
-              ))}
-            </div>
-          </div>
-        </div>
-      )}
+      <CommandPalette open={isSearchOpen} onClose={() => setIsSearchOpen(false)} onNavigate={onNavigate} />
 
     </header>
   );

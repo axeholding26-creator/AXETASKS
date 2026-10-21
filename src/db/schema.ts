@@ -17,6 +17,8 @@ export const users = pgTable('users', {
   password_hash: text('password_hash'),
   function_id: text('function_id').references(() => jobFunctions.id, { onDelete: 'set null' }),
   last_seen_at: timestamp('last_seen_at'),
+  // Opt-in: individual AXP leaderboards only list users who chose to appear.
+  show_in_leaderboard: boolean('show_in_leaderboard').notNull().default(false),
   created_at: timestamp('created_at').defaultNow(),
 });
 
@@ -82,6 +84,8 @@ export const tasks = pgTable('tasks', {
   end_at: timestamp('end_at'),
   completed_at: timestamp('completed_at'),
   stopped_at: timestamp('stopped_at'),
+  // Set when the task enters 'bloque', cleared when it leaves it.
+  blocked_at: timestamp('blocked_at'),
   estimated_minutes: integer('estimated_minutes'),
   position: integer('position').default(0),
   created_by: text('created_by').references(() => users.id),
@@ -191,6 +195,7 @@ export const notifications = pgTable('notifications', {
   task_id: text('task_id').references(() => tasks.id, { onDelete: 'cascade' }),
   workspace_id: text('workspace_id').references(() => workspaces.id, { onDelete: 'cascade' }),
   is_read: boolean('is_read').notNull().default(false),
+  read_at: timestamp('read_at'),
   created_at: timestamp('created_at').defaultNow(),
 }, (t) => [
   index('notifications_user_id_idx').on(t.user_id),
@@ -217,6 +222,48 @@ export const mobilePushTokens = pgTable('mobile_push_tokens', {
   created_at: timestamp('created_at').defaultNow(),
 }, (t) => [
   index('mobile_push_tokens_user_id_idx').on(t.user_id),
+]);
+
+// AXP ledger: one row per rewarded business event. event_key is unique so the
+// same event can never be paid twice; reopening/deleting a task revokes its
+// row (revoked_at) instead of deleting it, so every correction stays traceable.
+export const xpEvents = pgTable('xp_events', {
+  id: text('id').primaryKey(),
+  user_id: text('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  workspace_id: text('workspace_id').references(() => workspaces.id, { onDelete: 'set null' }),
+  task_id: text('task_id').references(() => tasks.id, { onDelete: 'set null' }),
+  // 'task_completed' | 'blocker_resolved' | 'kudos' | 'project_completed' | 'correction'
+  kind: text('kind').notNull(),
+  points: integer('points').notNull(),
+  event_key: text('event_key').notNull(),
+  reason: text('reason'),
+  meta: jsonb('meta'),
+  created_by: text('created_by').references(() => users.id, { onDelete: 'set null' }),
+  revoked_at: timestamp('revoked_at'),
+  revoked_reason: text('revoked_reason'),
+  created_at: timestamp('created_at').defaultNow(),
+}, (t) => [
+  uniqueIndex('xp_events_event_key_idx').on(t.event_key),
+  index('xp_events_user_id_idx').on(t.user_id),
+  index('xp_events_workspace_id_idx').on(t.workspace_id),
+]);
+
+// Time-boxed collective goals for a workspace (team).
+export const challenges = pgTable('challenges', {
+  id: text('id').primaryKey(),
+  workspace_id: text('workspace_id').notNull().references(() => workspaces.id, { onDelete: 'cascade' }),
+  title: text('title').notNull(),
+  // 'blockers_resolved' | 'validated_tasks' | 'overdue_reduction' | 'on_time_rate'
+  metric: text('metric').notNull(),
+  target: integer('target').notNull(),
+  baseline: integer('baseline'),
+  reward: text('reward'),
+  start_at: timestamp('start_at').notNull(),
+  end_at: timestamp('end_at').notNull(),
+  created_by: text('created_by').references(() => users.id, { onDelete: 'set null' }),
+  created_at: timestamp('created_at').defaultNow(),
+}, (t) => [
+  index('challenges_workspace_id_idx').on(t.workspace_id),
 ]);
 
 // Relationships
